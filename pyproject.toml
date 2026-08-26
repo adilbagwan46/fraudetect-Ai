@@ -26,6 +26,9 @@ ml = [
   "networkx>=3.3,<4",
   "scikit-learn>=1.5,<2",
 ]
+llm = [
+  "openai>=2,<3",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -41,4 +44,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-

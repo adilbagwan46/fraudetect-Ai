@@ -8,9 +8,9 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 3 behavioral intelligence is complete: the frozen Phase 2A HistGradientBoosting model and Phase 2B evidence remain unchanged, while referenced investigations can now add deterministic, past-only aggregate account behavior. The causal boundary is `historical.step < current.step`; same-step and future transactions are excluded.
+Phase 4 Investigation Copilot is complete: a positive-selection sanitizer transforms the existing deterministic investigation context into a privacy-bounded payload for a typed report. The application supports an optional server-side OpenAI Structured Outputs provider and a clearly labeled deterministic fallback that requires no credentials.
 
-The relationship engine, LLM investigator, and full analyst pages remain scheduled for later phases. No LLM participates in prediction, evidence, or behavioral context generation. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
+The frozen Phase 2A model, Phase 2B evidence, and Phase 3 causal behavior remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. Relationship intelligence and broader analyst pages remain scheduled for later phases. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
@@ -59,6 +59,12 @@ Prerequisites: Python 3.11+ and Node.js 20+.
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,ml]"
 cp .env.example .env
+```
+
+To enable the optional real OpenAI provider, install the additional server dependency:
+
+```bash
+.venv/bin/python -m pip install -e ".[dev,ml,llm]"
 ```
 
 Generate a small local dataset and prepare it:
@@ -114,7 +120,7 @@ npm run dev
 
 ## Environment variables
 
-See `.env.example`. Risk thresholds are centralized but remain provisional until Phase 2 validation analysis. LLM settings default to disabled; no API key is required for the ML/evidence system.
+See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires `FRAUDETECT_LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`; no API key is needed for prediction, evidence, behavior, or fallback reports. Provider secrets are never sent to the frontend.
 
 ## Testing
 
@@ -151,17 +157,19 @@ The rationale for model/LLM separation, PaySim, synthetic enrichment, chronologi
 
 The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
 
+`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral analysis, uncertainties, reversible next steps, mode metadata, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
+
 ## Limitations
 
 - PaySim is synthetic and cannot establish real merchant performance.
 - Device/IP enrichment demonstrates relationship mechanics, is applied after temporal splitting with fixed configured bucket counts, and is excluded from the Phase 2 model.
-- The current phase has no LLM investigation agent or production history store.
+- The local deterministic fallback is not an LLM, and real-provider quality depends on external model access and configuration.
 - Batch CSV preparation is appropriate for the buildathon but not production streaming scale.
 - Recommendations are simulated and never execute payment actions.
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Relationship intelligence and the evidence-bounded LLM investigator remain separate future work; Phase 3 does not start either automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Relationship intelligence and broader analyst workflow remain separate future work and are not started automatically.
 
 ## License
 

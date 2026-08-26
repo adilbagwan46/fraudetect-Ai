@@ -1,10 +1,13 @@
 PYTHON ?= python3.12
 
-.PHONY: install api test lint demo-data prepare-data train-models reference-profile behavior-history frontend-install frontend-dev
+.PHONY: install install-llm api test lint demo-data prepare-data train-models reference-profile behavior-history frontend-install frontend-dev
 
 install:
 	$(PYTHON) -m venv .venv
 	.venv/bin/python -m pip install -e ".[dev,ml]"
+
+install-llm:
+	.venv/bin/python -m pip install -e ".[dev,ml,llm]"
 
 api:
 	.venv/bin/uvicorn backend.app.main:app --reload --port 8000

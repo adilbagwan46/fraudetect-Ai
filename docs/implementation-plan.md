@@ -75,15 +75,16 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** every investigated transaction returns risk plus behavioral and relationship context, including explicit missing-data states.
 
-## Phase 4 — Evidence-grounded AI investigation
+## Phase 4 — Evidence-grounded AI investigation (complete)
 
-- Define provider-neutral `LLMProvider` and OpenAI-compatible implementation.
-- Implement allow-listed evidence tools: transaction history, behavior profile, entity connections, risk factors, policy, and optionally similar cases.
-- Require JSON-schema-compatible structured results and evidence IDs.
-- Validate output, strip/reject unsupported factual claims, capture uncertainty, and persist tool/audit events.
-- Provide a deterministic no-LLM fallback status while retaining all risk/evidence output.
+- Define provider-neutral `InvestigationLLMProvider` and server-side OpenAI Responses implementation.
+- Build a positive-selection `SanitizedInvestigationContext`; no raw history or identity tools are exposed.
+- Require Pydantic Structured Outputs with approved evidence IDs and bounded report sections.
+- Validate risk-level consistency, evidence citations, history limitations, identifiers, percentages, unsupported claims, and irreversible actions.
+- Provide an explicit deterministic fallback for disabled, missing-key, unavailable, timeout, and invalid-output cases.
+- Add a focused Copilot panel showing mode, summary, signals, behavior, limitations, and advisory actions.
 
-**Exit condition:** an investigation produces traceable evidence, interpretation, uncertainty, and a bounded recommendation; simulated provider failure is tested.
+**Exit condition:** an investigation produces a typed, evidence-linked advisory report in real or explicitly labeled fallback mode; provider payload and failure boundaries are tested directly.
 
 ## Phase 5 — Analyst frontend
 
