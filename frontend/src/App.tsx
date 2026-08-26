@@ -20,11 +20,44 @@ type CopilotResponse = {
   ai_available: boolean;
   model: string | null;
   fallback_reason: string | null;
+  relationship_context: {
+    context_available: boolean;
+    history_available: boolean;
+    relationship_seen_before: boolean | null;
+    relationship_first_seen: boolean | null;
+    prior_interaction_count: number;
+    prior_total_amount: number;
+    prior_amount: { average: number; median: number; maximum: number } | null;
+    current_amount_context: {
+      amount_vs_prior_average: number | null;
+      amount_vs_prior_median: number | null;
+      amount_vs_prior_maximum: number | null;
+      prior_empirical_percentile: number;
+      exceeds_prior_relationship_maximum: boolean;
+    } | null;
+    steps_since_previous_interaction: number | null;
+    baseline_is_limited: boolean;
+    origin_network: {
+      prior_unique_counterparty_count: number;
+      prior_transaction_count: number;
+      current_destination_is_new: boolean | null;
+    };
+    destination_network: {
+      prior_unique_origin_count: number;
+      prior_transaction_count: number;
+      current_origin_is_new_for_destination: boolean | null;
+    };
+  };
   report: {
     summary: string;
     risk_assessment: { level: "LOW" | "MEDIUM" | "HIGH"; assessment: string };
     key_signals: ReportSignal[];
     behavioral_analysis: { summary: string; history_limitation: string | null };
+    relationship_analysis: {
+      summary: string;
+      history_limitation: string | null;
+      evidence_ids: string[];
+    };
     uncertainties: string[];
     recommended_actions: { action: string; reason: string }[];
     analyst_note: string;
@@ -82,14 +115,14 @@ function App() {
           <span className="brand-mark">F</span>
           <span>FRAUDETECT <b>AI</b></span>
         </a>
-        <div className="phase"><span /> Investigation Copilot · Phase 4</div>
+        <div className="phase"><span /> Relationship Intelligence · Phase 5</div>
       </header>
 
       <section className="hero">
         <p className="eyebrow">PAYMENT RISK INTELLIGENCE</p>
         <h1>Investigate the evidence<br />around every transaction.</h1>
         <p className="lede">
-          ML detects the risk. AI investigates the evidence. Humans retain control.
+          ML scores risk. Deterministic intelligence explains history and relationships. Humans retain control.
         </p>
         <div className="status-card">
           <div>
@@ -102,9 +135,11 @@ function App() {
       </section>
 
       <section className="architecture" aria-label="Product intelligence layers">
-        <article><span>01</span><h2>ML risk engine</h2><p>Measured fraud probability and configurable risk thresholds.</p></article>
-        <article><span>02</span><h2>Behavioral context</h2><p>Strictly prior activity, amount deviation, recency, and type novelty.</p></article>
-        <article><span>03</span><h2>AI investigation</h2><p>Allowlisted evidence, explicit uncertainty, and advisory next steps.</p></article>
+        <article><span>01</span><h2>ML risk</h2><p>Frozen probability, classification threshold, and simulated policy.</p></article>
+        <article><span>02</span><h2>Evidence</h2><p>Typed, deterministic, and auditable transaction signals.</p></article>
+        <article><span>03</span><h2>Behavior</h2><p>Strictly prior origin activity and amount deviation.</p></article>
+        <article><span>04</span><h2>Relationships</h2><p>Causal pair history and aggregate network novelty.</p></article>
+        <article><span>05</span><h2>AI analysis</h2><p>Allowlisted context, explicit uncertainty, and advisory steps.</p></article>
       </section>
 
       <section className="copilot-workspace" aria-labelledby="copilot-title">
@@ -153,7 +188,7 @@ function App() {
               <p className="report-summary">{copilot.report.summary}</p>
 
               <div className="report-section">
-                <h4>Key Signals</h4>
+                <h4>Deterministic Evidence</h4>
                 <div className="signal-list">
                   {copilot.report.key_signals.map((signal) => (
                     <article key={`${signal.signal}-${signal.evidence_ids.join("-")}`}>
@@ -162,6 +197,27 @@ function App() {
                     </article>
                   ))}
                 </div>
+              </div>
+
+              <div className="report-section relationship-section">
+                <div className="relationship-heading">
+                  <h4>Relationship Intelligence</h4>
+                  <span>{!copilot.relationship_context.context_available
+                    ? "Unavailable"
+                    : copilot.relationship_context.relationship_seen_before
+                      ? "Previously observed"
+                      : "New relationship"}</span>
+                </div>
+                <div className="relationship-metrics">
+                  <div><span>Prior interactions</span><strong>{copilot.relationship_context.prior_interaction_count}</strong></div>
+                  <div><span>Prior average</span><strong>{copilot.relationship_context.prior_amount ? copilot.relationship_context.prior_amount.average.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</strong></div>
+                  <div><span>Prior maximum</span><strong>{copilot.relationship_context.prior_amount ? copilot.relationship_context.prior_amount.maximum.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</strong></div>
+                  <div><span>Vs prior average</span><strong>{copilot.relationship_context.current_amount_context?.amount_vs_prior_average != null ? `${copilot.relationship_context.current_amount_context.amount_vs_prior_average.toFixed(2)}×` : "—"}</strong></div>
+                  <div><span>Origin counterparties</span><strong>{copilot.relationship_context.context_available ? copilot.relationship_context.origin_network.prior_unique_counterparty_count : "—"}</strong></div>
+                  <div><span>Destination origins</span><strong>{copilot.relationship_context.context_available ? copilot.relationship_context.destination_network.prior_unique_origin_count : "—"}</strong></div>
+                </div>
+                <p>{copilot.report.relationship_analysis.summary}</p>
+                {copilot.report.relationship_analysis.history_limitation ? <p className="limitation">{copilot.report.relationship_analysis.history_limitation}</p> : null}
               </div>
 
               <div className="report-grid">

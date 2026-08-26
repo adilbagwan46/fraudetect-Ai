@@ -12,6 +12,7 @@ from backend.app.schemas.risk import (
     DerivedFeatures,
     EvidenceItem,
     ModelOutputContext,
+    RelationshipContext,
     RiskPredictionRequest,
 )
 from backend.app.services.behavioral_service import (
@@ -24,6 +25,10 @@ from backend.app.services.copilot.prompts import SYSTEM_PROMPT
 from backend.app.services.copilot.provider import OpenAIInvestigationProvider
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
 from backend.app.services.evidence_service import build_investigation_context
+from backend.app.services.relationship_service import (
+    RelationshipTransaction,
+    build_relationship_context,
+)
 from tests.helpers import reference_profile
 
 
@@ -49,6 +54,7 @@ def investigation_context(
     probability: float = 0.95,
     prediction: bool = True,
     behavioral: BehavioralContext | None = None,
+    relationship: RelationshipContext | None = None,
 ):
     transaction = RiskPredictionRequest(
         transaction_type="TRANSFER" if prediction else "PAYMENT",
@@ -75,6 +81,7 @@ def investigation_context(
         model_output=model,
         reference_profile=reference_profile(),
         behavioral_context=behavioral,
+        relationship_context=relationship,
     )
 
 
@@ -83,11 +90,13 @@ def sanitized_context(
     probability: float = 0.95,
     prediction: bool = True,
     behavioral: BehavioralContext | None = None,
+    relationship: RelationshipContext | None = None,
 ) -> SanitizedInvestigationContext:
     context = investigation_context(
         probability=probability,
         prediction=prediction,
         behavioral=behavioral,
+        relationship=relationship,
     )
     action = "HOLD_FOR_INVESTIGATION" if prediction else "NORMAL_PROCESSING"
     return build_sanitized_context(context, action)
@@ -134,6 +143,7 @@ def test_sanitizer_positively_selects_fields_and_blocks_identifiers_and_history(
         "evidence",
         "reference_context",
         "behavioral_context",
+        "relationship_context",
     }
     for forbidden in (
         "TX-999999999",
@@ -372,6 +382,86 @@ def test_provider_cannot_override_deterministic_simulated_action() -> None:
 
     assert response.mode == "deterministic_fallback"
     assert "Approve and release" not in response.report.model_dump_json()
+
+
+def test_relationship_payload_is_aggregate_only_and_fallback_preserves_limitations() -> None:
+    current = RelationshipTransaction(
+        transaction_reference="TX-current-private",
+        step=2,
+        amount=250_000,
+        origin_key="C-private-origin",
+        destination_key="M-private-destination",
+    )
+    prior = RelationshipTransaction(
+        transaction_reference="TX-prior-private",
+        step=1,
+        amount=10,
+        origin_key="C-private-origin",
+        destination_key="M-private-destination",
+    )
+    relationship = build_relationship_context(current, [prior])
+    context = sanitized_context(
+        behavioral=unavailable_behavioral_context(),
+        relationship=relationship,
+    )
+    response = CopilotService(None).investigate(context)
+    payload = context.model_dump_json()
+
+    assert context.relationship_context.prior_interaction_count == 1
+    assert "limited" in (
+        response.report.relationship_analysis.history_limitation or ""
+    ).lower()
+    assert "do not prove fraud" in response.report.relationship_analysis.summary
+    for forbidden in (
+        "TX-current-private",
+        "TX-prior-private",
+        "C-private-origin",
+        "M-private-destination",
+        "origin_key",
+        "destination_key",
+        "raw_relationship_history",
+    ):
+        assert forbidden not in payload
+
+
+def test_provider_cannot_invent_hidden_network_relationships() -> None:
+    class InventingProvider(CapturingProvider):
+        def generate(self, context):
+            report = super().generate(context)
+            report.relationship_analysis.summary = (
+                "A hidden relationship and shared identity prove network fraud."
+            )
+            return report
+
+    response = CopilotService(InventingProvider()).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert "hidden relationship" not in response.report.model_dump_json().lower()
+
+
+def test_provider_cannot_claim_a_seen_relationship_is_new() -> None:
+    relationship = build_relationship_context(
+        RelationshipTransaction("TX-current", 2, 20, "C-private", "M-private"),
+        [RelationshipTransaction("TX-prior", 1, 10, "C-private", "M-private")],
+    )
+
+    class ContradictingRelationshipProvider(CapturingProvider):
+        def generate(self, context):
+            report = super().generate(context)
+            report.relationship_analysis.summary = "This is a new relationship."
+            return report
+
+    response = CopilotService(ContradictingRelationshipProvider()).investigate(
+        sanitized_context(
+            behavioral=unavailable_behavioral_context(),
+            relationship=relationship,
+        )
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert "new relationship" not in response.report.relationship_analysis.summary.lower()
 
 
 def test_settings_repr_never_exposes_api_key() -> None:

@@ -8,9 +8,9 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 4 Investigation Copilot is complete: a positive-selection sanitizer transforms the existing deterministic investigation context into a privacy-bounded payload for a typed report. The application supports an optional server-side OpenAI Structured Outputs provider and a clearly labeled deterministic fallback that requires no credentials.
+Phase 5 Relationship Intelligence is implemented: referenced investigations add deterministic, strictly prior origin-destination history and aggregate network context from an ignored label-free SQLite index. The Phase 4 positive-selection Copilot may interpret only these approved aggregates and typed evidence.
 
-The frozen Phase 2A model, Phase 2B evidence, and Phase 3 causal behavior remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. Relationship intelligence and broader analyst pages remain scheduled for later phases. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
+The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
@@ -21,7 +21,7 @@ Transaction -> ML risk probability -> behavioral + graph evidence
 
 - **ML risk engine:** owns measurable fraud prediction.
 - **Behavioral intelligence:** compares the event with prior customer behavior.
-- **Relationship intelligence:** exposes relevant shared devices, IPs, accounts, and risky neighbors.
+- **Relationship intelligence:** summarizes causal origin-destination history and aggregate network breadth without claiming hidden or risky identities.
 - **AI investigator:** retrieves bounded evidence, distinguishes facts from interpretation, and reports uncertainty.
 - **Human analyst:** owns the final action.
 
@@ -110,6 +110,14 @@ Build the ignored, label-free behavioral history index after preparing genuine P
 
 This performs one chunked pass over prepared splits and enables indexed, causal investigation-time lookup without per-request full-dataset scans. See [docs/behavioral-intelligence.md](docs/behavioral-intelligence.md).
 
+Build the separate ignored, label-free relationship index:
+
+```bash
+.venv/bin/python scripts/build_relationship_history.py
+```
+
+It stores only the internal fields needed for indexed relationship aggregation, never loads fraud labels, and enforces `historical.step < current.step` at lookup. See [docs/relationship-intelligence.md](docs/relationship-intelligence.md).
+
 Start the frontend in another terminal:
 
 ```bash
@@ -155,9 +163,9 @@ The rationale for model/LLM separation, PaySim, synthetic enrichment, chronologi
 
 `POST /api/v1/risk/predict` returns the frozen model output plus three to five deterministic evidence items. `POST /api/v1/risk/investigate` returns the reusable typed investigation context intended for later LLM summarization. Evidence reports factual associations and reference statistics; it does not claim causality or replace the model decision.
 
-The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
+The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`, `relationship_context`, and separate typed relationship evidence; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
 
-`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral analysis, uncertainties, reversible next steps, mode metadata, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
+`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
 
 ## Limitations
 
@@ -169,7 +177,7 @@ The investigation endpoint accepts either the existing manual transaction fields
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Relationship intelligence and broader analyst workflow remain separate future work and are not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Broader analyst workflow remains separate future work and is not started automatically.
 
 ## License
 

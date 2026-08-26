@@ -9,6 +9,7 @@ from backend.app.schemas.risk import (
     EvidenceCategory,
     EvidenceSeverity,
     RecommendedAction,
+    RelationshipContext,
     RiskLevel,
     TransactionType,
 )
@@ -65,6 +66,7 @@ class SanitizedInvestigationContext(BaseModel):
     evidence: list[SanitizedEvidence]
     reference_context: SanitizedReferenceContext
     behavioral_context: BehavioralContext
+    relationship_context: RelationshipContext
 
 
 class ReportRiskAssessment(BaseModel):
@@ -90,6 +92,14 @@ class ReportBehavioralAnalysis(BaseModel):
     history_limitation: str | None = Field(default=None, max_length=500)
 
 
+class ReportRelationshipAnalysis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str = Field(min_length=1, max_length=700)
+    history_limitation: str | None = Field(default=None, max_length=500)
+    evidence_ids: list[str] = Field(max_length=4)
+
+
 class ReportRecommendedAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -104,6 +114,7 @@ class InvestigationReport(BaseModel):
     risk_assessment: ReportRiskAssessment
     key_signals: list[ReportSignal] = Field(max_length=5)
     behavioral_analysis: ReportBehavioralAnalysis
+    relationship_analysis: ReportRelationshipAnalysis
     uncertainties: list[str] = Field(min_length=1, max_length=5)
     recommended_actions: list[ReportRecommendedAction] = Field(min_length=1, max_length=4)
     analyst_note: str = Field(min_length=1, max_length=500)
@@ -119,3 +130,4 @@ class CopilotInvestigationResponse(BaseModel):
     ai_available: bool
     model: str | None = None
     fallback_reason: str | None = None
+    relationship_context: RelationshipContext

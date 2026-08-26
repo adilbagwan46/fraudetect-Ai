@@ -7,7 +7,7 @@ report. It does not calculate fraud probability, change model output, override t
 simulated recommendation, or participate in model features.
 
 ```text
-Frozen ML output + deterministic evidence + causal behavior
+Frozen ML output + deterministic evidence + causal behavior + relationship context
                          |
                          v
              positive-selection sanitizer
@@ -40,13 +40,14 @@ Allowed data is limited to:
   deterministic simulated action;
 - deterministic evidence ID, title, category, severity, and evidence-ID-specific scalar facts;
 - training split boundary and aggregate training fraud prevalence;
-- aggregate `BehavioralContext` values.
+- aggregate `BehavioralContext` values;
+- aggregate, identifier-free `RelationshipContext` values and approved relationship evidence.
 
 The Copilot never receives transaction references, customer/origin identifiers, destination
 identifiers, raw transaction history, model version, derived feature internals, unrestricted
 reference metadata, datasets, files, or database access. Unknown evidence fact keys and unapproved
-string values are discarded. Behavioral availability explanations are reconstructed from fixed
-server text.
+string values are discarded. Behavioral and relationship availability explanations are
+reconstructed from fixed server text.
 
 ## Prompt and injection boundary
 
@@ -89,14 +90,16 @@ Never put API keys in frontend environment variables or commit `.env`.
 - risk assessment with an enum risk level;
 - up to five key signals, each citing approved evidence IDs;
 - behavioral summary and explicit history limitation;
+- relationship summary, evidence IDs, and explicit unavailable/sparse-history limitation;
 - one to five uncertainties;
 - one to four advisory recommended actions;
 - analyst note;
 - fixed mode-appropriate disclaimer.
 
 Pydantic rejects missing, extra, incorrectly typed, or oversized fields. A grounding validator then
-requires the report risk level to equal frozen model output, restricts signal citations to supplied
-evidence IDs, enforces no/limited-history language, rejects raw identifier patterns, rejects known
+requires the report risk level to equal frozen model output, restricts citations to supplied
+evidence IDs, enforces no/limited behavioral and relationship-history language, rejects invented
+network connections or hidden/shared identities, rejects raw identifier patterns, rejects known
 unsupported claims and irreversible actions, and rejects percentages absent from the supplied
 context. The application replaces provider-written disclaimer text with the approved disclosure.
 
@@ -128,7 +131,8 @@ deterministic investigation endpoint:
 
 or all four manual scoring fields. Manual input receives no fabricated history. The endpoint first
 builds the existing deterministic context, sanitizes it, runs the configured provider, validates the
-report, and returns mode metadata plus `InvestigationReport`.
+report, and returns mode metadata, safe aggregate relationship context, and
+`InvestigationReport`.
 
 `POST /api/v1/risk/predict` and `POST /api/v1/risk/investigate` remain independent of provider
 availability and retain their previous behavior.

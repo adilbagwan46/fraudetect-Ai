@@ -90,6 +90,11 @@ observations; it is separate from model prediction and training-reference popula
 prediction endpoint and Phase 2B evidence behavior remain unchanged when no behavioral context is
 provided. See [behavioral-intelligence.md](behavioral-intelligence.md).
 
+Referenced Phase 5 investigations also return a separate list of `RELATIONSHIP_CONTEXT` evidence.
+It describes strictly earlier origin-destination history, amount comparison, novelty, and sparse
+baselines without changing or competing with Phase 2B model evidence. See
+[relationship-intelligence.md](relationship-intelligence.md).
+
 ## Investigation context
 
 `POST /api/v1/risk/investigate` returns a typed context containing:
@@ -109,4 +114,4 @@ This is the future LLM’s controlled input. It provides no unrestricted dataset
 - Percentiles are interpolated from stored reference quantiles rather than raw rows at request time.
 - Permutation importance can distribute importance unpredictably between correlated `amount` and `log_amount`.
 - Rules identify associations and unusual characteristics, not causal reasons.
-- There is no customer-specific history, genuine device/IP evidence, or relationship graph yet.
+- PaySim relationship history is synthetic and does not establish real identity or network risk.

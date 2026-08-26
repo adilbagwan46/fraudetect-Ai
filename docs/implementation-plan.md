@@ -66,15 +66,6 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** referenced investigations return deterministic aggregate context, manual inputs report unavailable history, future/same-step mutations cannot affect earlier context, and frozen Phase 2A/2B behavior remains intact.
 
-## Phase 3B — Relationship intelligence (future)
-
-- Compute new-device and new-IP indicators without changing the frozen model.
-- Build a lightweight NetworkX graph for Customer–Device–IP–Transaction–Merchant links.
-- Return a bounded local neighborhood and interpretable relationship aggregates.
-- Add evidence DTOs and transaction/evidence/connection APIs.
-
-**Exit condition:** every investigated transaction returns risk plus behavioral and relationship context, including explicit missing-data states.
-
 ## Phase 4 — Evidence-grounded AI investigation (complete)
 
 - Define provider-neutral `InvestigationLLMProvider` and server-side OpenAI Responses implementation.
@@ -86,7 +77,18 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** an investigation produces a typed, evidence-linked advisory report in real or explicitly labeled fallback mode; provider payload and failure boundaries are tested directly.
 
-## Phase 5 — Analyst frontend
+## Phase 5 — Relationship intelligence and causal network context (complete)
+
+- Preserve the frozen Phase 2A model and all prior deterministic calculations.
+- Build a separate label-free SQLite index from internal origin/destination identity fields.
+- Enforce `historical.step < current.step` for pair, origin-network, and destination-network context.
+- Return identifier-free relationship aggregates and separate typed relationship evidence.
+- Extend the Copilot allowlist, grounding checks, deterministic fallback, and focused UI.
+- Avoid an in-memory graph and unjustified graph algorithms.
+
+**Exit condition:** referenced investigations return causal relationship and network context without IDs, labels, same-step data, future leakage, or any change to model output.
+
+## Phase 6 — Analyst frontend
 
 - Build risk overview, filterable transaction list, investigation workspace, local graph, and evaluation page.
 - Emphasize the investigation page, evidence timeline, risk semantics, and human decision controls.
@@ -94,7 +96,7 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** a five-minute end-to-end analyst demo works without developer tools.
 
-## Phase 6 — Verification and documentation
+## Phase 7 — Verification and documentation
 
 - Run the final held-out evaluation once after model/threshold freeze.
 - Document false-positive cost assumptions: `FP × (review cost + friction estimate)`.
@@ -102,7 +104,7 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 - Complete README, data card, architecture, evaluation, and engineering decisions.
 - Verify fresh-clone setup and remove generated/large artifacts from Git.
 
-## Phase 7 — Demo polish
+## Phase 8 — Demo polish
 
 - Fix bugs and accessibility/layout problems; add no major features.
 - Prepare stable demo cases covering low, medium, high, graph context, and LLM fallback.
@@ -117,6 +119,6 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 | ML | Logistic regression baseline vs HistGradientBoosting | Honest interpretable baseline and strong dependency-light candidate |
 | Backend | FastAPI modular monolith | Typed API and fast build without operational overhead |
 | Frontend | React + Vite + TypeScript | Fast, polished SPA workflow and type-safe API integration |
-| Graph | NetworkX bounded neighborhoods | Explainable and sufficient at demo scale |
+| Relationship storage | Indexed SQLite aggregates | Causal local lookup without a 6.3M-row in-memory graph |
 | Database | SQLite | Zero-ops local durability; repository abstraction preserves upgrade path |
 | AI | Provider interface + evidence tools + validated result | Meaningful tool use, grounding, fallback, and vendor portability |

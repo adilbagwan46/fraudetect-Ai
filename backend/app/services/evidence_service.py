@@ -9,9 +9,11 @@ from backend.app.schemas.risk import (
     EvidenceItem,
     InvestigationContext,
     ModelOutputContext,
+    RelationshipContext,
     RiskPredictionRequest,
 )
 from backend.app.services.behavioral_service import unavailable_behavioral_context
+from backend.app.services.relationship_service import unavailable_relationship_context
 
 SEVERITY_RANK = {"CRITICAL": 5, "HIGH": 4, "MEDIUM": 3, "LOW": 2, "INFO": 1}
 
@@ -409,6 +411,128 @@ def _behavioral_evidence(context: BehavioralContext) -> list[EvidenceCandidate]:
     return candidates
 
 
+def generate_relationship_evidence(
+    context: RelationshipContext,
+) -> list[EvidenceItem]:
+    """Create auditable relationship-only evidence without altering model evidence."""
+
+    if not context.context_available:
+        return [
+            EvidenceItem(
+                id="relationship_context_unavailable",
+                category="RELATIONSHIP_CONTEXT",
+                severity="INFO",
+                title="Relationship context is unavailable",
+                description=context.availability_explanation,
+                facts={"context_available": False},
+            )
+        ]
+    if not context.history_available:
+        return [
+            EvidenceItem(
+                id="relationship_new_counterparty",
+                category="RELATIONSHIP_CONTEXT",
+                severity="LOW",
+                title="No prior origin-destination relationship was observed",
+                description=(
+                    "No earlier-step interaction between the origin and destination was "
+                    "observed. Relationship novelty does not imply fraud."
+                ),
+                facts={
+                    "relationship_seen_before": False,
+                    "relationship_first_seen": True,
+                    "prior_interaction_count": 0,
+                    "prior_unique_counterparty_count": (
+                        context.origin_network.prior_unique_counterparty_count
+                    ),
+                    "prior_unique_origin_count": (
+                        context.destination_network.prior_unique_origin_count
+                    ),
+                    "current_destination_is_new": True,
+                    "current_origin_is_new_for_destination": True,
+                },
+            )
+        ]
+
+    evidence = [
+        EvidenceItem(
+            id="relationship_previously_observed",
+            category="RELATIONSHIP_CONTEXT",
+            severity="INFO",
+            title="The relationship was previously observed",
+            description=(
+                "At least one strictly earlier-step interaction was observed for this "
+                "origin-destination pair."
+            ),
+            facts={
+                "relationship_seen_before": True,
+                "prior_interaction_count": context.prior_interaction_count,
+                "steps_since_previous_interaction": (
+                    context.steps_since_previous_interaction
+                ),
+            },
+        )
+    ]
+    if context.baseline_is_limited:
+        evidence.append(
+            EvidenceItem(
+                id="relationship_limited_history",
+                category="RELATIONSHIP_CONTEXT",
+                severity="INFO",
+                title="Relationship history is limited",
+                description=(
+                    "The relationship baseline contains no more than two prior interactions, "
+                    "so comparisons require caution."
+                ),
+                facts={
+                    "prior_interaction_count": context.prior_interaction_count,
+                    "baseline_is_limited": True,
+                },
+            )
+        )
+    amount = context.current_amount_context
+    if amount is not None:
+        ratio = amount.amount_vs_prior_average
+        if ratio is not None and ratio >= 5:
+            evidence.append(
+                EvidenceItem(
+                    id="relationship_amount_deviation",
+                    category="RELATIONSHIP_CONTEXT",
+                    severity=(
+                        "MEDIUM" if context.baseline_is_limited else "HIGH"
+                    ),
+                    title="Amount is substantially above the prior relationship average",
+                    description=(
+                        "The amount is at least five times the prior relationship average. "
+                        "This deviation does not prove fraud."
+                    ),
+                    facts={
+                        "amount_vs_prior_average": ratio,
+                        "prior_interaction_count": context.prior_interaction_count,
+                        "baseline_is_limited": context.baseline_is_limited,
+                    },
+                )
+            )
+        if amount.exceeds_prior_relationship_maximum:
+            evidence.append(
+                EvidenceItem(
+                    id="relationship_exceeds_prior_maximum",
+                    category="RELATIONSHIP_CONTEXT",
+                    severity="MEDIUM",
+                    title="Amount exceeds the prior relationship maximum",
+                    description=(
+                        "The amount exceeds every strictly earlier amount observed for this "
+                        "relationship."
+                    ),
+                    facts={
+                        "exceeds_prior_relationship_maximum": True,
+                        "amount_vs_prior_maximum": amount.amount_vs_prior_maximum,
+                    },
+                )
+            )
+    return evidence
+
+
 def generate_evidence(
     *,
     transaction: RiskPredictionRequest,
@@ -445,6 +569,7 @@ def build_investigation_context(
     model_output: ModelOutputContext,
     reference_profile: dict[str, Any],
     behavioral_context: BehavioralContext | None = None,
+    relationship_context: RelationshipContext | None = None,
 ) -> InvestigationContext:
     evidence = generate_evidence(
         transaction=transaction,
@@ -454,6 +579,7 @@ def build_investigation_context(
         behavioral_context=behavioral_context,
     )
     statistics = reference_profile["statistics"]
+    relationship = relationship_context or unavailable_relationship_context()
     return InvestigationContext(
         transaction=transaction,
         derived_features=derived_features,
@@ -475,5 +601,11 @@ def build_investigation_context(
             behavioral_context
             if behavioral_context is not None
             else unavailable_behavioral_context()
+        ),
+        relationship_context=relationship,
+        relationship_evidence=(
+            generate_relationship_evidence(relationship)
+            if relationship_context is not None
+            else []
         ),
     )

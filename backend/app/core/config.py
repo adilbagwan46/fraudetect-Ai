@@ -14,6 +14,7 @@ class Settings:
     dataset_manifest: Path = Path("data/processed/manifest.json")
     model_artifact_root: Path = Path("artifacts/models")
     behavioral_history_db: Path = Path("artifacts/behavioral/history.sqlite")
+    relationship_history_db: Path = Path("artifacts/relationship/history.sqlite")
     llm_enabled: bool = False
     llm_provider: str = "openai"
     llm_model: str = "gpt-5.6"
@@ -65,6 +66,12 @@ def get_settings() -> Settings:
             os.getenv(
                 "FRAUDETECT_BEHAVIORAL_HISTORY_DB",
                 "artifacts/behavioral/history.sqlite",
+            )
+        ),
+        relationship_history_db=Path(
+            os.getenv(
+                "FRAUDETECT_RELATIONSHIP_HISTORY_DB",
+                "artifacts/relationship/history.sqlite",
             )
         ),
         llm_enabled=_environment_bool("FRAUDETECT_LLM_ENABLED", False),

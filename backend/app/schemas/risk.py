@@ -14,6 +14,7 @@ EvidenceCategory = Literal[
     "TRANSACTION_TYPE_CONTEXT",
     "TIME_CONTEXT",
     "BEHAVIORAL_CONTEXT",
+    "RELATIONSHIP_CONTEXT",
 ]
 EvidenceSeverity = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
 
@@ -134,6 +135,50 @@ class BehavioralContext(BaseModel):
     transaction_type_context: TransactionTypeBehavior
 
 
+class RelationshipAmountContext(BaseModel):
+    average: float = Field(ge=0, allow_inf_nan=False)
+    median: float = Field(ge=0, allow_inf_nan=False)
+    maximum: float = Field(ge=0, allow_inf_nan=False)
+
+
+class CurrentRelationshipAmountContext(BaseModel):
+    amount_vs_prior_average: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    amount_vs_prior_median: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    amount_vs_prior_maximum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    prior_empirical_percentile: float = Field(ge=0, le=1, allow_inf_nan=False)
+    exceeds_prior_relationship_maximum: bool
+
+
+class OriginNetworkContext(BaseModel):
+    prior_unique_counterparty_count: int = Field(ge=0)
+    prior_transaction_count: int = Field(ge=0)
+    current_destination_is_new: bool | None
+
+
+class DestinationNetworkContext(BaseModel):
+    prior_unique_origin_count: int = Field(ge=0)
+    prior_transaction_count: int = Field(ge=0)
+    current_origin_is_new_for_destination: bool | None
+
+
+class RelationshipContext(BaseModel):
+    """Identifier-free aggregates computed with historical.step < current.step."""
+
+    context_available: bool
+    history_available: bool
+    availability_explanation: str
+    relationship_seen_before: bool | None
+    relationship_first_seen: bool | None
+    prior_interaction_count: int = Field(ge=0)
+    prior_total_amount: float = Field(ge=0, allow_inf_nan=False)
+    prior_amount: RelationshipAmountContext | None
+    current_amount_context: CurrentRelationshipAmountContext | None
+    steps_since_previous_interaction: int | None = Field(default=None, ge=1)
+    baseline_is_limited: bool
+    origin_network: OriginNetworkContext
+    destination_network: DestinationNetworkContext
+
+
 class InvestigationContext(BaseModel):
     transaction: RiskPredictionRequest
     derived_features: DerivedFeatures
@@ -142,6 +187,8 @@ class InvestigationContext(BaseModel):
     reference_profile_version: str
     approved_reference_statistics: dict[str, Any]
     behavioral_context: BehavioralContext
+    relationship_context: RelationshipContext
+    relationship_evidence: list[EvidenceItem]
 
 
 class RiskPredictionResponse(BaseModel):

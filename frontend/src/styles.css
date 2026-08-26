@@ -20,9 +20,9 @@ h1 { max-width: 850px; margin: 16px 0; font-size: clamp(42px, 6.5vw, 88px); line
 .status-card strong { font: 11px DM Mono, monospace; color: #7df7bd; }
 .status-card p { color: #aac0b6; font-size: 13px; line-height: 1.6; margin-bottom: 0; }
 .row-count { display: block; margin-top: 12px; color: #e5f7ef; font: 11px DM Mono, monospace; }
-.architecture { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #21352e; border-bottom: 1px solid #21352e; }
-.architecture article { padding: 30px 4vw 30px 0; min-height: 190px; border-right: 1px solid #21352e; }
-.architecture article + article { padding-left: 4vw; }
+.architecture { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid #21352e; border-bottom: 1px solid #21352e; }
+.architecture article { padding: 30px 2vw 30px 0; min-height: 190px; border-right: 1px solid #21352e; }
+.architecture article + article { padding-left: 2vw; }
 .architecture article:last-child { border: 0; }
 .architecture span { font: 11px DM Mono, monospace; color: #5bd29e; }
 .architecture h2 { font-size: 17px; font-weight: 600; margin: 30px 0 8px; }
@@ -56,9 +56,18 @@ h1 { max-width: 850px; margin: 16px 0; font-size: clamp(42px, 6.5vw, 88px); line
 .signal-list article > span { min-width: 44px; color: #6bdba9; font: 9px DM Mono, monospace; }
 .signal-list strong { font-size: 12px; font-weight: 600; }.signal-list p { margin: 5px 0 0; color: #789186; font-size: 11px; }
 .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }.report-grid ul { margin: 0; padding-left: 17px; }
+.relationship-section { margin: 2px 0 24px; }
+.relationship-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.relationship-heading > span { color: #72e7b3; font: 9px DM Mono, monospace; text-transform: uppercase; }
+.relationship-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 4px 0 18px; background: #20382e; border: 1px solid #20382e; }
+.relationship-metrics div { min-width: 0; padding: 12px; background: #0b1d17; }
+.relationship-metrics span, .relationship-metrics strong { display: block; }
+.relationship-metrics span { min-height: 28px; color: #718b80; font: 9px/1.4 DM Mono, monospace; text-transform: uppercase; }
+.relationship-metrics strong { margin-top: 8px; color: #d7ebe2; font: 500 14px DM Mono, monospace; }
 .limitation { padding: 10px; border: 1px solid #5c4d2f; color: #d8c28c !important; background: rgba(82, 66, 31, .18); }
 .actions { margin-top: 24px; }.actions ol { margin: 0; padding-left: 20px; }.actions li { padding: 5px 0 9px 5px; }.actions strong, .actions span { display: block; }.actions span { color: #71897f; }
 .report-disclaimer { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid #20382e; color: #577166; font: 9px/1.6 DM Mono, monospace; text-transform: uppercase; }
 footer { padding-top: 24px; color: #587065; font: 10px DM Mono, monospace; text-transform: uppercase; letter-spacing: .08em; }
+@media (max-width: 1050px) { .architecture { grid-template-columns: repeat(3, 1fr); }.architecture article:nth-child(3) { border-right: 0; }.architecture article:nth-child(n+4) { border-top: 1px solid #21352e; } }
 @media (max-width: 860px) { .copilot-workspace { grid-template-columns: 1fr; }.report-grid { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .status-card { position: static; width: 100%; margin-top: 30px; } .hero { padding: 70px 0; } .architecture { grid-template-columns: 1fr; } .architecture article, .architecture article + article { border-right: 0; border-bottom: 1px solid #21352e; padding: 26px 0; } .reference-form > div { flex-direction: column; }.reference-form button { min-height: 43px; }.report-heading { align-items: stretch; flex-direction: column; } }
+@media (max-width: 760px) { .status-card { position: static; width: 100%; margin-top: 30px; } .hero { padding: 70px 0; } .architecture { grid-template-columns: 1fr; } .architecture article, .architecture article + article { border-right: 0; border-bottom: 1px solid #21352e; border-top: 0; padding: 26px 0; } .relationship-metrics { grid-template-columns: repeat(2, 1fr); }.reference-form > div { flex-direction: column; }.reference-form button { min-height: 43px; }.report-heading { align-items: stretch; flex-direction: column; } }

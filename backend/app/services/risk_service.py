@@ -15,6 +15,7 @@ from backend.app.schemas.risk import (
     InvestigationContext,
     ModelOutputContext,
     RecommendedAction,
+    RelationshipContext,
     RiskPredictionRequest,
     RiskPredictionResponse,
 )
@@ -152,6 +153,7 @@ def investigate_risk(
     request: RiskPredictionRequest,
     *,
     behavioral_context: BehavioralContext | None = None,
+    relationship_context: RelationshipContext | None = None,
 ) -> tuple[InvestigationContext, RecommendedAction]:
     if bundle.reference_profile is None:
         raise ModelUnavailableError("Evidence reference profile is unavailable")
@@ -162,6 +164,7 @@ def investigate_risk(
         model_output=model_output,
         reference_profile=bundle.reference_profile,
         behavioral_context=behavioral_context,
+        relationship_context=relationship_context,
     )
     return context, action
 

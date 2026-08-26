@@ -11,6 +11,7 @@ from backend.app.schemas.copilot import (
     InvestigationReport,
     ReportBehavioralAnalysis,
     ReportRecommendedAction,
+    ReportRelationshipAnalysis,
     ReportRiskAssessment,
     ReportSignal,
     SanitizedInvestigationContext,
@@ -38,6 +39,8 @@ FORBIDDEN_REPORT_PATTERNS = (
     r"\bnameDest\b",
     r"\btransaction_reference\b",
     r"\borigin_key\b",
+    r"\bdestination_key\b",
+    r"\braw_relationship_history\b",
     r"\bunfamiliar location\b",
     r"\bchanged devices?\b",
     r"\bnew devices?\b",
@@ -48,6 +51,10 @@ FORBIDDEN_REPORT_PATTERNS = (
     r"\bclose (?:the )?(?:customer'?s )?account\b",
     r"\bblacklist\b",
     r"\bpermanently block\b",
+    r"\bshared identit(?:y|ies)\b",
+    r"\bhidden relationships?\b",
+    r"\bunknown network connections?\b",
+    r"\bnovelty proves? fraud\b",
 )
 
 SIGNAL_EXPLANATIONS = {
@@ -85,6 +92,24 @@ SIGNAL_EXPLANATIONS = {
     "behavior_new_transaction_type": (
         "This type was not observed in the available earlier-step history for the origin."
     ),
+    "relationship_context_unavailable": (
+        "Relationship aggregates are unavailable for this investigation input."
+    ),
+    "relationship_new_counterparty": (
+        "No earlier-step interaction was observed for this origin-destination pair."
+    ),
+    "relationship_previously_observed": (
+        "The pair has at least one interaction at a strictly earlier PaySim step."
+    ),
+    "relationship_limited_history": (
+        "The relationship baseline contains no more than two earlier interactions."
+    ),
+    "relationship_amount_deviation": (
+        "The amount is at least five times the deterministic prior relationship average."
+    ),
+    "relationship_exceeds_prior_maximum": (
+        "The amount exceeds the maximum in strictly earlier relationship history."
+    ),
 }
 
 
@@ -107,6 +132,10 @@ def validate_report_grounding(
     for signal in report.key_signals:
         if not set(signal.evidence_ids).issubset(approved_ids):
             raise CopilotGroundingError("Report cites evidence outside the approved context")
+    if not set(report.relationship_analysis.evidence_ids).issubset(approved_ids):
+        raise CopilotGroundingError(
+            "Relationship analysis cites evidence outside the approved context"
+        )
 
     behavior = context.behavioral_context
     limitation = (report.behavioral_analysis.history_limitation or "").lower()
@@ -117,6 +146,35 @@ def validate_report_grounding(
     if behavior.history_available and behavior.prior_transaction_count <= 2:
         if "limited" not in limitation and "only" not in limitation:
             raise CopilotGroundingError("Limited behavioral history must be qualified")
+
+    relationship = context.relationship_context
+    relationship_text = (
+        f"{report.relationship_analysis.summary} "
+        f"{report.relationship_analysis.history_limitation or ''}"
+    ).lower()
+    relationship_ids = {
+        item.evidence_id
+        for item in context.evidence
+        if item.category == "RELATIONSHIP_CONTEXT"
+    }
+    if relationship.context_available and relationship_ids and not (
+        set(report.relationship_analysis.evidence_ids) & relationship_ids
+    ):
+        raise CopilotGroundingError("Relationship analysis must cite relationship evidence")
+    if not relationship.context_available and "unavailable" not in relationship_text:
+        raise CopilotGroundingError("Unavailable relationship context must be disclosed")
+    if relationship.context_available and not relationship.history_available:
+        if "no prior" not in relationship_text and "new relationship" not in relationship_text:
+            raise CopilotGroundingError("New relationship status must be stated accurately")
+        if "previously observed" in relationship_text:
+            raise CopilotGroundingError("Report invents prior relationship history")
+    if relationship.history_available:
+        if "no prior" in relationship_text or "new relationship" in relationship_text:
+            raise CopilotGroundingError("Report contradicts prior relationship history")
+        if relationship.prior_interaction_count <= 2 and not any(
+            marker in relationship_text for marker in ("limited", "only", "sparse")
+        ):
+            raise CopilotGroundingError("Limited relationship history must be qualified")
 
     text = _report_text(report)
     for pattern in FORBIDDEN_REPORT_PATTERNS:
@@ -176,9 +234,9 @@ def _behavioral_analysis(
     if amount is not None and amount.exceeds_prior_maximum:
         observations.append("The amount exceeds the maximum in eligible prior history")
     if behavior.transaction_type_context.is_new_transaction_type_for_origin:
-        observations.append("the transaction type is new in available prior history")
+        observations.append("The transaction type is new in available prior history")
     if behavior.recent_activity.steps_since_previous_transaction == 1:
-        observations.append("origin activity occurred in the immediately preceding step")
+        observations.append("Origin activity occurred in the immediately preceding step")
     if not observations:
         observations.append("No strong behavioral deviation is established by the supplied context")
     summary = ". ".join(observations) + ". Behavioral deviation does not prove fraud."
@@ -193,6 +251,59 @@ def _behavioral_analysis(
             f"{behavior.prior_transaction_count} prior {noun} {verb} available."
         )
     return ReportBehavioralAnalysis(summary=summary, history_limitation=limitation)
+
+
+def _relationship_analysis(
+    context: SanitizedInvestigationContext,
+) -> ReportRelationshipAnalysis:
+    relationship = context.relationship_context
+    evidence_ids = [
+        item.evidence_id
+        for item in context.evidence
+        if item.category == "RELATIONSHIP_CONTEXT"
+    ][:4]
+    if not relationship.context_available:
+        return ReportRelationshipAnalysis(
+            summary="Relationship comparison is unavailable for this investigation input.",
+            history_limitation=(
+                "Relationship context is unavailable, so no relationship or network baseline "
+                "can be described."
+            ),
+            evidence_ids=evidence_ids,
+        )
+    if not relationship.history_available:
+        return ReportRelationshipAnalysis(
+            summary=(
+                "No prior origin-destination interaction was observed before the current step. "
+                "Relationship novelty does not prove fraud."
+            ),
+            history_limitation=(
+                "No prior relationship baseline is available for amount comparison."
+            ),
+            evidence_ids=evidence_ids,
+        )
+
+    observations = [
+        f"The relationship was observed in {relationship.prior_interaction_count} prior "
+        f"interaction{'s' if relationship.prior_interaction_count != 1 else ''}"
+    ]
+    amount = relationship.current_amount_context
+    if amount is not None and amount.exceeds_prior_relationship_maximum:
+        observations.append("the amount exceeds the prior relationship maximum")
+    else:
+        observations.append("the amount does not exceed the prior relationship maximum")
+    limitation = None
+    if relationship.baseline_is_limited:
+        limitation = (
+            "The relationship baseline is limited because only "
+            f"{relationship.prior_interaction_count} prior interaction"
+            f"{'s are' if relationship.prior_interaction_count != 1 else ' is'} available."
+        )
+    return ReportRelationshipAnalysis(
+        summary="; ".join(observations) + ". Relationship patterns do not prove fraud.",
+        history_limitation=limitation,
+        evidence_ids=evidence_ids,
+    )
 
 
 def _fallback_report(context: SanitizedInvestigationContext) -> InvestigationReport:
@@ -280,6 +391,7 @@ def _fallback_report(context: SanitizedInvestigationContext) -> InvestigationRep
         ),
         key_signals=key_signals,
         behavioral_analysis=_behavioral_analysis(context),
+        relationship_analysis=_relationship_analysis(context),
         uncertainties=uncertainties,
         recommended_actions=actions,
         analyst_note=(
@@ -317,6 +429,7 @@ class CopilotService:
                     mode="real_llm",
                     ai_available=True,
                     model=self.provider.model,
+                    relationship_context=context.relationship_context,
                 )
             except (CopilotProviderError, CopilotGroundingError, ValidationError, ValueError):
                 fallback_reason = "Provider unavailable or returned an invalid grounded report"
@@ -333,6 +446,7 @@ class CopilotService:
             mode="deterministic_fallback",
             ai_available=False,
             fallback_reason=fallback_reason,
+            relationship_context=context.relationship_context,
         )
 
 

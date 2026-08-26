@@ -20,6 +20,11 @@ from backend.app.services.behavioral_service import (
 )
 from backend.app.services.copilot.context_builder import build_sanitized_context
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
+from backend.app.services.relationship_service import (
+    RelationshipHistoryUnavailableError,
+    RelationshipTransactionNotFoundError,
+    SQLiteRelationshipHistoryProvider,
+)
 from backend.app.services.risk_service import (
     ModelUnavailableError,
     investigate_risk,
@@ -50,10 +55,14 @@ def _build_investigation(
     historical_transaction, behavioral_context = provider.context_for(
         request.transaction_reference
     )
+    relationship_context = SQLiteRelationshipHistoryProvider(
+        settings.relationship_history_db
+    ).context_for(request.transaction_reference)
     return investigate_risk(
         bundle,
         historical_transaction.scoring_request(),
         behavioral_context=behavioral_context,
+        relationship_context=relationship_context,
     )
 
 
@@ -98,6 +107,10 @@ def risk_investigation(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except BehaviorHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    except RelationshipTransactionNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except RelationshipHistoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except ModelUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -118,6 +131,10 @@ def risk_copilot_investigation(
     except TransactionReferenceNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except BehaviorHistoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RelationshipTransactionNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except RelationshipHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ModelUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error

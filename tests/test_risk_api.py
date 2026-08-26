@@ -81,6 +81,42 @@ def create_test_history(database: Path) -> None:
             "CREATE INDEX transactions_origin_step_idx "
             "ON transactions (origin_key, step, transaction_reference)"
         )
+
+
+def create_test_relationship_history(database: Path) -> None:
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE relationship_transactions (
+                transaction_reference TEXT PRIMARY KEY,
+                step INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                origin_key TEXT NOT NULL,
+                destination_key TEXT NOT NULL
+            ) WITHOUT ROWID
+            """
+        )
+        connection.executemany(
+            "INSERT INTO relationship_transactions VALUES (?, ?, ?, ?, ?)",
+            [
+                ("TX-000000001", 1, 10.0, "C-secret", "M-secret"),
+                ("TX-000000002", 2, 95.0, "C-secret", "M-secret"),
+                ("TX-000000003", 2, 900.0, "C-secret", "M-other-secret"),
+            ],
+        )
+        connection.execute(
+            "CREATE INDEX relationship_pair_step_idx ON relationship_transactions "
+            "(origin_key, destination_key, step, transaction_reference)"
+        )
+        connection.execute(
+            "CREATE INDEX relationship_origin_step_idx ON relationship_transactions "
+            "(origin_key, step, destination_key)"
+        )
+        connection.execute(
+            "CREATE INDEX relationship_destination_step_idx ON relationship_transactions "
+            "(destination_key, step, origin_key)"
+        )
 def test_risk_api_validates_scoring_time_inputs() -> None:
     client = TestClient(app)
 
@@ -135,6 +171,8 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         assert investigation.status_code == 200
         assert investigation.json()["reference_profile_version"] == "reference-test"
         assert investigation.json()["behavioral_context"]["history_available"] is False
+        assert investigation.json()["relationship_context"]["context_available"] is False
+        assert investigation.json()["relationship_evidence"] == []
         assert set(evaluation.json()) == {
             "validation",
             "test",
@@ -150,10 +188,15 @@ def test_investigation_reference_returns_aggregate_history_without_identifiers(
 ) -> None:
     artifact_root = tmp_path / "models"
     history_database = tmp_path / "behavior" / "history.sqlite"
+    relationship_database = tmp_path / "relationship" / "history.sqlite"
     create_test_bundle(artifact_root)
     create_test_history(history_database)
+    create_test_relationship_history(relationship_database)
     monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
     monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(history_database))
+    monkeypatch.setenv(
+        "FRAUDETECT_RELATIONSHIP_HISTORY_DB", str(relationship_database)
+    )
     get_settings.cache_clear()
     try:
         response = TestClient(app).post(
@@ -166,11 +209,15 @@ def test_investigation_reference_returns_aggregate_history_without_identifiers(
         assert payload["behavioral_context"]["history_available"] is True
         assert payload["behavioral_context"]["prior_transaction_count"] == 1
         assert payload["behavioral_context"]["prior_total_amount"] == 10
+        assert payload["relationship_context"]["relationship_seen_before"] is True
+        assert payload["relationship_context"]["prior_interaction_count"] == 1
         serialized = response.text
         assert "C-secret" not in serialized
         assert "TX-000000001" not in serialized
         assert "TX-000000002" not in serialized
         assert "origin_key" not in serialized
+        assert "M-secret" not in serialized
+        assert "destination_key" not in serialized
     finally:
         get_settings.cache_clear()
 
@@ -216,6 +263,32 @@ def test_investigation_reports_unavailable_history_index(
 
         assert response.status_code == 503
         assert "build-behavior-history" in response.json()["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_investigation_reports_unavailable_relationship_index(
+    tmp_path: Path, monkeypatch
+) -> None:
+    artifact_root = tmp_path / "models"
+    history_database = tmp_path / "behavior" / "history.sqlite"
+    create_test_bundle(artifact_root)
+    create_test_history(history_database)
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(history_database))
+    monkeypatch.setenv(
+        "FRAUDETECT_RELATIONSHIP_HISTORY_DB",
+        str(tmp_path / "missing-relationship.sqlite"),
+    )
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).post(
+            "/api/v1/risk/investigate",
+            json={"transaction_reference": "TX-000000002"},
+        )
+
+        assert response.status_code == 503
+        assert "build-relationship-history" in response.json()["detail"]
     finally:
         get_settings.cache_clear()
 

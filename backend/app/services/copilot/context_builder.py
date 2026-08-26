@@ -13,11 +13,16 @@ from backend.app.schemas.copilot import (
 from backend.app.schemas.risk import (
     BehavioralContext,
     CurrentAmountBehavior,
+    CurrentRelationshipAmountContext,
+    DestinationNetworkContext,
     InvestigationContext,
+    OriginNetworkContext,
     PriorAmountContext,
     RecentActivityContext,
     RecentWindowActivity,
     RecommendedAction,
+    RelationshipAmountContext,
+    RelationshipContext,
     TransactionTypeBehavior,
 )
 
@@ -93,6 +98,34 @@ SAFE_EVIDENCE_FACTS: dict[str, frozenset[str]] = {
     ),
     "behavior_new_transaction_type": frozenset(
         {"is_new_transaction_type_for_origin", "prior_transaction_type_count"}
+    ),
+    "relationship_context_unavailable": frozenset({"context_available"}),
+    "relationship_new_counterparty": frozenset(
+        {
+            "relationship_seen_before",
+            "relationship_first_seen",
+            "prior_interaction_count",
+            "prior_unique_counterparty_count",
+            "prior_unique_origin_count",
+            "current_destination_is_new",
+            "current_origin_is_new_for_destination",
+        }
+    ),
+    "relationship_previously_observed": frozenset(
+        {
+            "relationship_seen_before",
+            "prior_interaction_count",
+            "steps_since_previous_interaction",
+        }
+    ),
+    "relationship_limited_history": frozenset(
+        {"prior_interaction_count", "baseline_is_limited"}
+    ),
+    "relationship_amount_deviation": frozenset(
+        {"amount_vs_prior_average", "prior_interaction_count", "baseline_is_limited"}
+    ),
+    "relationship_exceeds_prior_maximum": frozenset(
+        {"exceeds_prior_relationship_maximum", "amount_vs_prior_maximum"}
     ),
 }
 SAFE_STRING_FACT_VALUES = frozenset(
@@ -183,6 +216,66 @@ def _sanitize_behavior(context: BehavioralContext) -> BehavioralContext:
     )
 
 
+def _sanitize_relationship(context: RelationshipContext) -> RelationshipContext:
+    prior = context.prior_amount
+    current = context.current_amount_context
+    return RelationshipContext(
+        context_available=context.context_available,
+        history_available=context.history_available,
+        availability_explanation=(
+            "Aggregates use only origin-destination interactions with step < current step."
+            if context.history_available
+            else (
+                "No earlier-step origin-destination relationship was observed."
+                if context.context_available
+                else "Relationship context is unavailable for this input."
+            )
+        ),
+        relationship_seen_before=context.relationship_seen_before,
+        relationship_first_seen=context.relationship_first_seen,
+        prior_interaction_count=context.prior_interaction_count,
+        prior_total_amount=context.prior_total_amount,
+        prior_amount=(
+            RelationshipAmountContext(
+                average=prior.average,
+                median=prior.median,
+                maximum=prior.maximum,
+            )
+            if prior is not None
+            else None
+        ),
+        current_amount_context=(
+            CurrentRelationshipAmountContext(
+                amount_vs_prior_average=current.amount_vs_prior_average,
+                amount_vs_prior_median=current.amount_vs_prior_median,
+                amount_vs_prior_maximum=current.amount_vs_prior_maximum,
+                prior_empirical_percentile=current.prior_empirical_percentile,
+                exceeds_prior_relationship_maximum=(
+                    current.exceeds_prior_relationship_maximum
+                ),
+            )
+            if current is not None
+            else None
+        ),
+        steps_since_previous_interaction=context.steps_since_previous_interaction,
+        baseline_is_limited=context.baseline_is_limited,
+        origin_network=OriginNetworkContext(
+            prior_unique_counterparty_count=(
+                context.origin_network.prior_unique_counterparty_count
+            ),
+            prior_transaction_count=context.origin_network.prior_transaction_count,
+            current_destination_is_new=context.origin_network.current_destination_is_new,
+        ),
+        destination_network=DestinationNetworkContext(
+            prior_unique_origin_count=context.destination_network.prior_unique_origin_count,
+            prior_transaction_count=context.destination_network.prior_transaction_count,
+            current_origin_is_new_for_destination=(
+                context.destination_network.current_origin_is_new_for_destination
+            ),
+        ),
+    )
+
+
 def build_sanitized_context(
     investigation: InvestigationContext,
     recommended_action: RecommendedAction,
@@ -216,7 +309,7 @@ def build_sanitized_context(
                 category=item.category,
                 facts=_safe_evidence_facts(item.id, item.facts),
             )
-            for item in investigation.evidence
+            for item in [*investigation.evidence, *investigation.relationship_evidence]
         ],
         reference_context=SanitizedReferenceContext(
             source_split=reference["source_split"],
@@ -226,4 +319,5 @@ def build_sanitized_context(
             ],
         ),
         behavioral_context=_sanitize_behavior(investigation.behavioral_context),
+        relationship_context=_sanitize_relationship(investigation.relationship_context),
     )
