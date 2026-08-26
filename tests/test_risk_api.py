@@ -9,6 +9,7 @@ from sklearn.dummy import DummyClassifier
 from backend.app.core.config import get_settings
 from backend.app.main import app
 from ml.fraudetect_ml.data.contracts import ML_FEATURE_COLUMNS
+from tests.helpers import reference_profile
 
 
 def create_test_bundle(root: Path) -> None:
@@ -42,6 +43,7 @@ def create_test_bundle(root: Path) -> None:
         "test-metrics.json": {},
         "candidate-comparison.json": {},
         "operating-points.json": {},
+        "reference-profile.json": reference_profile(),
     }
     for name, payload in payloads.items():
         (model_dir / name).write_text(json.dumps(payload), encoding="utf-8")
@@ -90,6 +92,19 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         assert status.json()["status"] == "ready"
         assert prediction.status_code == 200
         assert prediction.json()["recommendation_is_simulated"] is True
+        assert len(prediction.json()["evidence"]) <= 5
+        assert status.json()["reference_profile_version"] == "reference-test"
+        investigation = client.post(
+            "/api/v1/risk/investigate",
+            json={
+                "transaction_type": "TRANSFER",
+                "amount": 95,
+                "origin_balance_before": 100,
+                "hour_of_day": 3,
+            },
+        )
+        assert investigation.status_code == 200
+        assert investigation.json()["reference_profile_version"] == "reference-test"
         assert set(evaluation.json()) == {
             "validation",
             "test",
@@ -98,4 +113,3 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         }
     finally:
         get_settings.cache_clear()
-

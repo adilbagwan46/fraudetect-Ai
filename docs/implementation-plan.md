@@ -45,6 +45,17 @@ Each phase ends with runnable tests and a usable vertical increment. The order p
 
 Four approved candidates were compared on genuine prepared PaySim: weighted/unweighted Logistic Regression and weighted/unweighted HistGradientBoosting. Training-only chronological calibration, validation-only candidate/threshold selection, a frozen balanced HistGradientBoosting winner, one-shot held-out evaluation, versioned artifacts, and typed risk APIs are complete. See `docs/evaluation.md`.
 
+## Phase 2B — Evidence and explainability engine (complete)
+
+- Preserve the frozen Phase 2A model, threshold, calibration, and risk behavior.
+- Build a reproducible aggregate reference profile from training steps 1–323 only.
+- Measure global model reliance with fixed-seed training-only permutation importance.
+- Generate deterministic local model-risk, amount, balance, type, and time evidence.
+- Prioritize three to five proportional items without causal claims.
+- Extend prediction responses and expose a typed investigation context for future LLM use.
+
+**Exit condition:** identical model input and artifact produce identical structured evidence, low-risk results remain proportional, and future investigation components can consume a controlled factual context.
+
 ## Phase 3 — Behavioral and relationship intelligence
 
 - Add customer rolling history using past-only windows.

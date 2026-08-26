@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.core.config import Settings, get_settings
 from backend.app.schemas.risk import (
+    InvestigationContext,
     ModelStatusResponse,
     RiskPredictionRequest,
     RiskPredictionResponse,
 )
 from backend.app.services.risk_service import (
     ModelUnavailableError,
+    investigate_risk,
     load_active_bundle,
     predict_risk,
 )
@@ -32,7 +34,8 @@ def model_status(settings: SettingsDependency) -> ModelStatusResponse:
         model_family=bundle.metadata["model_family"],
         operating_mode=bundle.threshold_policy["recommended_mode"],
         dataset_sha256=bundle.metadata["dataset"]["sha256"],
-        message="Frozen Phase 2A model bundle is available.",
+        reference_profile_version=bundle.reference_profile["reference_profile_version"],
+        message="Frozen Phase 2A model and Phase 2B evidence profile are available.",
     )
 
 
@@ -44,6 +47,19 @@ def risk_prediction(
     try:
         bundle = load_active_bundle(settings.model_artifact_root)
         return predict_risk(bundle, request)
+    except ModelUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/risk/investigate", response_model=InvestigationContext)
+def risk_investigation(
+    request: RiskPredictionRequest,
+    settings: SettingsDependency,
+) -> InvestigationContext:
+    try:
+        bundle = load_active_bundle(settings.model_artifact_root)
+        context, _ = investigate_risk(bundle, request)
+        return context
     except ModelUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 

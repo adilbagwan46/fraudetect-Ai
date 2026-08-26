@@ -8,9 +8,9 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 2A is complete: the leakage-aware PaySim foundation now powers a calibrated HistGradientBoosting risk model selected against three alternatives using validation data only. The winning model, three validation-selected operating modes, one-shot held-out evaluation, machine-readable artifacts, and typed prediction/evaluation APIs are available locally.
+Phase 2B is complete: the frozen Phase 2A HistGradientBoosting model now feeds a deterministic Evidence & Explainability Engine. Prediction values remain model-owned; server-generated evidence adds training-reference amount, balance, transaction-type, and time context suitable for a future controlled investigation copilot.
 
-The relationship engine, AI investigator, and full analyst pages remain scheduled for later phases. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
+The relationship engine, LLM investigator, and full analyst pages remain scheduled for later phases. No LLM participates in prediction or evidence generation. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
@@ -88,6 +88,14 @@ Start the API:
 
 API documentation is available at `http://localhost:8000/docs`.
 
+After training a fresh model bundle, generate its training-only evidence profile with:
+
+```bash
+.venv/bin/python scripts/build_reference_profile.py
+```
+
+The profile records deterministic training-reference distributions and global permutation importance without storing raw training rows. See [docs/explainability.md](docs/explainability.md).
+
 Start the frontend in another terminal:
 
 ```bash
@@ -128,6 +136,10 @@ No fabricated or demo-generator metrics are presented as final results.
 ## Engineering decisions
 
 The rationale for model/LLM separation, PaySim, synthetic enrichment, chronological splitting, the modular monolith, SQLite, and evidence-addressable AI output is documented in [docs/engineering-decisions.md](docs/engineering-decisions.md).
+
+## Evidence and explainability
+
+`POST /api/v1/risk/predict` returns the frozen model output plus three to five deterministic evidence items. `POST /api/v1/risk/investigate` returns the reusable typed investigation context intended for later LLM summarization. Evidence reports factual associations and reference statistics; it does not claim causality or replace the model decision.
 
 ## Limitations
 

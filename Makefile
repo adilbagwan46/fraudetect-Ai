@@ -1,6 +1,6 @@
 PYTHON ?= python3.12
 
-.PHONY: install api test lint demo-data prepare-data train-models frontend-install frontend-dev
+.PHONY: install api test lint demo-data prepare-data train-models reference-profile frontend-install frontend-dev
 
 install:
 	$(PYTHON) -m venv .venv
@@ -23,6 +23,9 @@ prepare-data:
 
 train-models:
 	.venv/bin/python scripts/train_models.py
+
+reference-profile:
+	.venv/bin/python scripts/build_reference_profile.py
 
 frontend-install:
 	cd frontend && npm install
