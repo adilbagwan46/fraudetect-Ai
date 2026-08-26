@@ -13,6 +13,7 @@ class Settings:
     api_prefix: str = "/api/v1"
     dataset_manifest: Path = Path("data/processed/manifest.json")
     model_artifact_root: Path = Path("artifacts/models")
+    behavioral_history_db: Path = Path("artifacts/behavioral/history.sqlite")
     enrichment_seed: str = "fraudetect-demo-v1"
     enrichment_device_buckets: int = 10_000
     enrichment_ip_buckets: int = 5_000
@@ -40,6 +41,12 @@ def get_settings() -> Settings:
         ),
         model_artifact_root=Path(
             os.getenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", "artifacts/models")
+        ),
+        behavioral_history_db=Path(
+            os.getenv(
+                "FRAUDETECT_BEHAVIORAL_HISTORY_DB",
+                "artifacts/behavioral/history.sqlite",
+            )
         ),
         enrichment_seed=os.getenv("FRAUDETECT_ENRICHMENT_SEED", "fraudetect-demo-v1"),
         enrichment_device_buckets=int(os.getenv("FRAUDETECT_DEVICE_BUCKETS", "10000")),

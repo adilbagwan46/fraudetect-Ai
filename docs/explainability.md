@@ -84,6 +84,12 @@ Phase 2B preserves Phase 2A behavior:
 
 `fraud_probability` is the calibrated frozen model score. `fraud_prediction` is the thresholded BALANCED classification. `risk_level` is a presentation/policy band. Evidence does not change any of them.
 
+Referenced Phase 3 investigations may add `BEHAVIORAL_CONTEXT` evidence derived from aggregate
+origin history at strictly earlier PaySim steps. This evidence describes deviation from prior
+observations; it is separate from model prediction and training-reference population context. The
+prediction endpoint and Phase 2B evidence behavior remain unchanged when no behavioral context is
+provided. See [behavioral-intelligence.md](behavioral-intelligence.md).
+
 ## Investigation context
 
 `POST /api/v1/risk/investigate` returns a typed context containing:

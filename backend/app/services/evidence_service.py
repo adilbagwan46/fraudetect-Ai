@@ -4,12 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.app.schemas.risk import (
+    BehavioralContext,
     DerivedFeatures,
     EvidenceItem,
     InvestigationContext,
     ModelOutputContext,
     RiskPredictionRequest,
 )
+from backend.app.services.behavioral_service import unavailable_behavioral_context
 
 SEVERITY_RANK = {"CRITICAL": 5, "HIGH": 4, "MEDIUM": 3, "LOW": 2, "INFO": 1}
 
@@ -278,12 +280,142 @@ def _time_evidence(
     )
 
 
+def _behavioral_evidence(context: BehavioralContext) -> list[EvidenceCandidate]:
+    if not context.history_available:
+        return [
+            EvidenceCandidate(
+                item=EvidenceItem(
+                    id="behavior_history_unavailable",
+                    category="BEHAVIORAL_CONTEXT",
+                    severity="INFO",
+                    title="No prior behavioral history is available",
+                    description=context.availability_explanation,
+                    facts={"history_available": False},
+                ),
+                relevance=2.0,
+            )
+        ]
+
+    candidates: list[EvidenceCandidate] = []
+    amount = context.current_amount_context
+    if amount is not None:
+        average_ratio = amount.amount_vs_prior_average
+        if average_ratio is not None and average_ratio >= 5:
+            sufficient_history = context.prior_transaction_count >= 3
+            candidates.append(
+                EvidenceCandidate(
+                    item=EvidenceItem(
+                        id="behavior_amount_above_typical",
+                        category="BEHAVIORAL_CONTEXT",
+                        severity="HIGH" if sufficient_history else "MEDIUM",
+                        title=(
+                            "Amount is substantially above prior typical behavior"
+                            if sufficient_history
+                            else "Amount is substantially above limited prior history"
+                        ),
+                        description=(
+                            "The amount is at least five times the origin's prior observed "
+                            "average. The available baseline is limited, and this deviation "
+                            "is not proof of fraud."
+                            if not sufficient_history
+                            else (
+                                "The amount is at least five times the origin's prior observed "
+                                "average. This is behavioral deviation, not proof of fraud."
+                            )
+                        ),
+                        facts={
+                            "amount_vs_prior_average": average_ratio,
+                            "prior_transaction_count": context.prior_transaction_count,
+                            "baseline_is_limited": not sufficient_history,
+                        },
+                    ),
+                    relevance=min(3.0, average_ratio / 5),
+                )
+            )
+        if amount.exceeds_prior_maximum:
+            candidates.append(
+                EvidenceCandidate(
+                    item=EvidenceItem(
+                        id="behavior_amount_above_prior_maximum",
+                        category="BEHAVIORAL_CONTEXT",
+                        severity="MEDIUM",
+                        title="Amount exceeds the prior observed maximum",
+                        description=(
+                            "The amount is larger than every earlier transaction observed "
+                            "for this origin."
+                        ),
+                        facts={
+                            "exceeds_prior_maximum": True,
+                            "amount_vs_prior_maximum": amount.amount_vs_prior_maximum,
+                        },
+                    ),
+                    relevance=1.0,
+                )
+            )
+
+    shortest_window = min(
+        context.recent_activity.windows,
+        key=lambda activity: activity.window_steps,
+    )
+    if (
+        shortest_window.prior_transaction_count >= 1
+        and context.recent_activity.steps_since_previous_transaction == 1
+    ):
+        candidates.append(
+            EvidenceCandidate(
+                item=EvidenceItem(
+                    id="behavior_recent_activity",
+                    category="BEHAVIORAL_CONTEXT",
+                    severity="MEDIUM",
+                    title="Transaction follows recent origin activity",
+                    description=(
+                        "At least one earlier transaction for this origin occurred in the "
+                        "immediately preceding PaySim step."
+                    ),
+                    facts={
+                        "window_steps": shortest_window.window_steps,
+                        "prior_transaction_count": shortest_window.prior_transaction_count,
+                        "prior_amount_total": shortest_window.prior_amount_total,
+                        "steps_since_previous_transaction": (
+                            context.recent_activity.steps_since_previous_transaction
+                        ),
+                    },
+                ),
+                relevance=float(shortest_window.prior_transaction_count),
+            )
+        )
+
+    type_context = context.transaction_type_context
+    if type_context.is_new_transaction_type_for_origin:
+        candidates.append(
+            EvidenceCandidate(
+                item=EvidenceItem(
+                    id="behavior_new_transaction_type",
+                    category="BEHAVIORAL_CONTEXT",
+                    severity="LOW",
+                    title="Transaction type is new in the available prior history",
+                    description=(
+                        "No earlier transaction of this type was observed for this origin. "
+                        "This does not claim it is the customer's first-ever real-world use."
+                    ),
+                    facts={
+                        "is_new_transaction_type_for_origin": True,
+                        "prior_transaction_type_count": 0,
+                    },
+                ),
+                relevance=0.5,
+            )
+        )
+    return candidates
+
+
 def generate_evidence(
     *,
     transaction: RiskPredictionRequest,
     derived_features: DerivedFeatures,
     model_output: ModelOutputContext,
     reference_profile: dict[str, Any],
+    behavioral_context: BehavioralContext | None = None,
     max_items: int = 5,
 ) -> list[EvidenceItem]:
     candidates = [
@@ -293,6 +425,8 @@ def generate_evidence(
         _transaction_type_evidence(transaction, reference_profile),
         _time_evidence(transaction, reference_profile),
     ]
+    if behavioral_context is not None:
+        candidates.extend(_behavioral_evidence(behavioral_context))
     ordered = sorted(
         candidates,
         key=lambda candidate: (
@@ -310,12 +444,14 @@ def build_investigation_context(
     derived_features: DerivedFeatures,
     model_output: ModelOutputContext,
     reference_profile: dict[str, Any],
+    behavioral_context: BehavioralContext | None = None,
 ) -> InvestigationContext:
     evidence = generate_evidence(
         transaction=transaction,
         derived_features=derived_features,
         model_output=model_output,
         reference_profile=reference_profile,
+        behavioral_context=behavioral_context,
     )
     statistics = reference_profile["statistics"]
     return InvestigationContext(
@@ -335,4 +471,9 @@ def build_investigation_context(
             ],
             "global_model_importance": reference_profile["global_model_importance"],
         },
+        behavioral_context=(
+            behavioral_context
+            if behavioral_context is not None
+            else unavailable_behavioral_context()
+        ),
     )

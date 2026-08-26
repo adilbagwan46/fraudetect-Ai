@@ -8,9 +8,9 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 2B is complete: the frozen Phase 2A HistGradientBoosting model now feeds a deterministic Evidence & Explainability Engine. Prediction values remain model-owned; server-generated evidence adds training-reference amount, balance, transaction-type, and time context suitable for a future controlled investigation copilot.
+Phase 3 behavioral intelligence is complete: the frozen Phase 2A HistGradientBoosting model and Phase 2B evidence remain unchanged, while referenced investigations can now add deterministic, past-only aggregate account behavior. The causal boundary is `historical.step < current.step`; same-step and future transactions are excluded.
 
-The relationship engine, LLM investigator, and full analyst pages remain scheduled for later phases. No LLM participates in prediction or evidence generation. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
+The relationship engine, LLM investigator, and full analyst pages remain scheduled for later phases. No LLM participates in prediction, evidence, or behavioral context generation. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
@@ -96,6 +96,14 @@ After training a fresh model bundle, generate its training-only evidence profile
 
 The profile records deterministic training-reference distributions and global permutation importance without storing raw training rows. See [docs/explainability.md](docs/explainability.md).
 
+Build the ignored, label-free behavioral history index after preparing genuine PaySim:
+
+```bash
+.venv/bin/python scripts/build_behavior_history.py
+```
+
+This performs one chunked pass over prepared splits and enables indexed, causal investigation-time lookup without per-request full-dataset scans. See [docs/behavioral-intelligence.md](docs/behavioral-intelligence.md).
+
 Start the frontend in another terminal:
 
 ```bash
@@ -141,17 +149,19 @@ The rationale for model/LLM separation, PaySim, synthetic enrichment, chronologi
 
 `POST /api/v1/risk/predict` returns the frozen model output plus three to five deterministic evidence items. `POST /api/v1/risk/investigate` returns the reusable typed investigation context intended for later LLM summarization. Evidence reports factual associations and reference statistics; it does not claim causality or replace the model decision.
 
+The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
+
 ## Limitations
 
 - PaySim is synthetic and cannot establish real merchant performance.
 - Device/IP enrichment demonstrates relationship mechanics, is applied after temporal splitting with fixed configured bucket counts, and is excluded from the Phase 2 model.
-- The current phase has no trained model or investigation agent.
+- The current phase has no LLM investigation agent or production history store.
 - Batch CSV preparation is appropriate for the buildathon but not production streaming scale.
 - Recommendations are simulated and never execute payment actions.
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). The recommended next step is Phase 2: build the leakage-aware preprocessing/model pipelines, perform validation-only model and threshold selection, serialize the winning artifact, and expose risk prediction through FastAPI.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Relationship intelligence and the evidence-bounded LLM investigator remain separate future work; Phase 3 does not start either automatically.
 
 ## License
 

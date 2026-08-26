@@ -10,6 +10,7 @@ import joblib
 import pandas as pd
 
 from backend.app.schemas.risk import (
+    BehavioralContext,
     DerivedFeatures,
     InvestigationContext,
     ModelOutputContext,
@@ -149,6 +150,8 @@ def score_transaction(
 def investigate_risk(
     bundle: LoadedModelBundle,
     request: RiskPredictionRequest,
+    *,
+    behavioral_context: BehavioralContext | None = None,
 ) -> tuple[InvestigationContext, RecommendedAction]:
     if bundle.reference_profile is None:
         raise ModelUnavailableError("Evidence reference profile is unavailable")
@@ -158,6 +161,7 @@ def investigate_risk(
         derived_features=derived,
         model_output=model_output,
         reference_profile=bundle.reference_profile,
+        behavioral_context=behavioral_context,
     )
     return context, action
 

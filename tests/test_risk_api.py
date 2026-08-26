@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import joblib
@@ -53,6 +54,33 @@ def create_test_bundle(root: Path) -> None:
     )
 
 
+def create_test_history(database: Path) -> None:
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE transactions (
+                transaction_reference TEXT PRIMARY KEY,
+                step INTEGER NOT NULL,
+                transaction_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                origin_balance_before REAL NOT NULL,
+                origin_key TEXT NOT NULL
+            ) WITHOUT ROWID
+            """
+        )
+        connection.executemany(
+            "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("TX-000000001", 1, "PAYMENT", 10.0, 100.0, "C-secret"),
+                ("TX-000000002", 2, "TRANSFER", 95.0, 100.0, "C-secret"),
+                ("TX-000000003", 2, "CASH_OUT", 900.0, 100.0, "C-secret"),
+            ],
+        )
+        connection.execute(
+            "CREATE INDEX transactions_origin_step_idx "
+            "ON transactions (origin_key, step, transaction_reference)"
+        )
 def test_risk_api_validates_scoring_time_inputs() -> None:
     client = TestClient(app)
 
@@ -92,6 +120,7 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         assert status.json()["status"] == "ready"
         assert prediction.status_code == 200
         assert prediction.json()["recommendation_is_simulated"] is True
+        assert "behavioral_context" not in prediction.json()
         assert len(prediction.json()["evidence"]) <= 5
         assert status.json()["reference_profile_version"] == "reference-test"
         investigation = client.post(
@@ -105,6 +134,7 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         )
         assert investigation.status_code == 200
         assert investigation.json()["reference_profile_version"] == "reference-test"
+        assert investigation.json()["behavioral_context"]["history_available"] is False
         assert set(evaluation.json()) == {
             "validation",
             "test",
@@ -113,3 +143,93 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
         }
     finally:
         get_settings.cache_clear()
+
+
+def test_investigation_reference_returns_aggregate_history_without_identifiers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    artifact_root = tmp_path / "models"
+    history_database = tmp_path / "behavior" / "history.sqlite"
+    create_test_bundle(artifact_root)
+    create_test_history(history_database)
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(history_database))
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).post(
+            "/api/v1/risk/investigate",
+            json={"transaction_reference": "TX-000000002"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["behavioral_context"]["history_available"] is True
+        assert payload["behavioral_context"]["prior_transaction_count"] == 1
+        assert payload["behavioral_context"]["prior_total_amount"] == 10
+        serialized = response.text
+        assert "C-secret" not in serialized
+        assert "TX-000000001" not in serialized
+        assert "TX-000000002" not in serialized
+        assert "origin_key" not in serialized
+    finally:
+        get_settings.cache_clear()
+
+
+def test_investigation_invalid_reference_is_safely_rejected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    artifact_root = tmp_path / "models"
+    history_database = tmp_path / "behavior" / "history.sqlite"
+    create_test_bundle(artifact_root)
+    create_test_history(history_database)
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(history_database))
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).post(
+            "/api/v1/risk/investigate",
+            json={"transaction_reference": "TX-999999999"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Unknown transaction reference: TX-999999999"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_investigation_reports_unavailable_history_index(
+    tmp_path: Path, monkeypatch
+) -> None:
+    artifact_root = tmp_path / "models"
+    create_test_bundle(artifact_root)
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv(
+        "FRAUDETECT_BEHAVIORAL_HISTORY_DB",
+        str(tmp_path / "missing-history.sqlite"),
+    )
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).post(
+            "/api/v1/risk/investigate",
+            json={"transaction_reference": "TX-000000002"},
+        )
+
+        assert response.status_code == 503
+        assert "build-behavior-history" in response.json()["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_investigation_reference_rejects_mixed_manual_input() -> None:
+    response = TestClient(app).post(
+        "/api/v1/risk/investigate",
+        json={
+            "transaction_reference": "TX-000000002",
+            "amount": 95,
+            "transaction_type": "TRANSFER",
+            "origin_balance_before": 100,
+            "hour_of_day": 2,
+        },
+    )
+
+    assert response.status_code == 422

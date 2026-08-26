@@ -56,10 +56,19 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** identical model input and artifact produce identical structured evidence, low-risk results remain proportional, and future investigation components can consume a controlled factual context.
 
-## Phase 3 — Behavioral and relationship intelligence
+## Phase 3A — Causal behavioral intelligence (complete)
 
-- Add customer rolling history using past-only windows.
-- Compute velocity, amount deviation, new-device, and new-IP indicators.
+- Add origin history using the strict `historical.step < current.step` boundary.
+- Compute focused prior-amount, amount-deviation, recent-step, step-gap, and type-novelty context.
+- Build a label-free generated SQLite index through a provider abstraction for efficient lookup.
+- Keep raw PaySim identities internal and return aggregate behavioral facts only.
+- Extend investigation context and deterministic evidence without changing prediction behavior.
+
+**Exit condition:** referenced investigations return deterministic aggregate context, manual inputs report unavailable history, future/same-step mutations cannot affect earlier context, and frozen Phase 2A/2B behavior remains intact.
+
+## Phase 3B — Relationship intelligence (future)
+
+- Compute new-device and new-IP indicators without changing the frozen model.
 - Build a lightweight NetworkX graph for Customer–Device–IP–Transaction–Merchant links.
 - Return a bounded local neighborhood and interpretable relationship aggregates.
 - Add evidence DTOs and transaction/evidence/connection APIs.

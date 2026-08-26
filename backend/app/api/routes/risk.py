@@ -8,8 +8,14 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.schemas.risk import (
     InvestigationContext,
     ModelStatusResponse,
+    RiskInvestigationRequest,
     RiskPredictionRequest,
     RiskPredictionResponse,
+)
+from backend.app.services.behavioral_service import (
+    BehaviorHistoryUnavailableError,
+    SQLitePaySimHistoryProvider,
+    TransactionReferenceNotFoundError,
 )
 from backend.app.services.risk_service import (
     ModelUnavailableError,
@@ -53,13 +59,30 @@ def risk_prediction(
 
 @router.post("/risk/investigate", response_model=InvestigationContext)
 def risk_investigation(
-    request: RiskPredictionRequest,
+    request: RiskInvestigationRequest,
     settings: SettingsDependency,
 ) -> InvestigationContext:
     try:
         bundle = load_active_bundle(settings.model_artifact_root)
-        context, _ = investigate_risk(bundle, request)
+        if request.transaction_reference is None:
+            transaction = request.manual_transaction()
+            context, _ = investigate_risk(bundle, transaction)
+            return context
+
+        provider = SQLitePaySimHistoryProvider(settings.behavioral_history_db)
+        historical_transaction, behavioral_context = provider.context_for(
+            request.transaction_reference
+        )
+        context, _ = investigate_risk(
+            bundle,
+            historical_transaction.scoring_request(),
+            behavioral_context=behavioral_context,
+        )
         return context
+    except TransactionReferenceNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except BehaviorHistoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except ModelUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
