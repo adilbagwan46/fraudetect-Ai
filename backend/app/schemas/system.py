@@ -17,3 +17,29 @@ class DatasetStatusResponse(BaseModel):
     generated_at: str | None = None
     message: str
 
+
+ComponentStatus = Literal["ready", "unavailable"]
+
+
+class ReadinessComponent(BaseModel):
+    key: Literal[
+        "ml_model",
+        "deterministic_evidence",
+        "reference_profile",
+        "behavioral_history",
+        "relationship_history",
+        "case_store",
+        "llm_copilot",
+    ]
+    label: str
+    status: ComponentStatus
+    version: str | None = None
+    mode: str | None = None
+    fallback_available: bool = False
+    message: str
+
+
+class SystemReadinessResponse(BaseModel):
+    status: Literal["ready", "degraded"]
+    components: list[ReadinessComponent]
+    advisory_only: Literal[True] = True

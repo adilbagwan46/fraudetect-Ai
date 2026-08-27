@@ -92,6 +92,24 @@ class CaseStatusHistoryItem(BaseModel):
     note_recorded: bool
 
 
+class DecisionTraceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event: Literal[
+        "CASE_CREATED",
+        "INTELLIGENCE_CAPTURED",
+        "COPILOT_GENERATED",
+        "ANALYST_REVIEWED",
+        "CASE_ESCALATED",
+        "CASE_CLEARED",
+        "CASE_CLOSED",
+    ]
+    occurred_at: datetime
+    actor: Literal["SYSTEM", "COPILOT", "ANALYST"]
+    label: str
+    detail: str
+
+
 class CaseDetailResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -100,6 +118,7 @@ class CaseDetailResponse(BaseModel):
     investigation_limitations: list[str]
     copilot: CopilotInvestigationResponse | None
     status_history: list[CaseStatusHistoryItem]
+    decision_trace: list[DecisionTraceItem]
     snapshot_is_immutable: Literal[True] = True
 
 

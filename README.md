@@ -8,7 +8,7 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 6 Analyst Investigation Workflow is implemented: analysts can create immutable identifier-free cases, prioritize and filter a durable local queue, inspect all five intelligence layers, request a grounded Copilot brief, and record controlled human dispositions. The workflow is documented in [docs/analyst-workflow.md](docs/analyst-workflow.md).
+Phase 7 Product Polish, Demo Experience & Investigation Observability is implemented. Analysts can follow the investigation from frozen ML prediction through deterministic and historical context, clearly labeled advisory AI analysis, and the authoritative human decision. The workspace includes safe component readiness, an event-backed decision trace, complete queue filtering, and deterministic isolated showcase cases. See [docs/analyst-workflow.md](docs/analyst-workflow.md) and [docs/demo-guide.md](docs/demo-guide.md).
 
 The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
@@ -128,7 +128,13 @@ npm run dev
 
 The development server proxies `/api` to `http://127.0.0.1:8000`. Set `VITE_API_BASE_URL` at build time only when the deployed API is hosted separately.
 
-To populate a self-contained local showcase queue without copying PaySim data, run `make demo-cases`, then launch the API with the generated paths printed by the command. The generated case and synthetic history databases live under ignored `artifacts/demo/`; use `scripts/seed_demo_cases.py --force` only when you intend to replace them.
+To populate a self-contained local showcase queue without copying PaySim data, run:
+
+```bash
+make demo
+```
+
+The command creates an isolated case store plus synthetic behavioral and relationship indexes under ignored `artifacts/demo/`. It refuses to overwrite an existing demo. Only use `.venv/bin/python scripts/seed_demo_cases.py --force` when replacement is intentional. Launch the API against the demo paths printed by the command; the exact sequence is in [docs/demo-guide.md](docs/demo-guide.md).
 
 ## Environment variables
 
@@ -171,7 +177,9 @@ The investigation endpoint accepts either the existing manual transaction fields
 
 `POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
 
-The Phase 6 case API adds `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_id}`, and `POST /api/v1/cases/{case_id}/copilot`. Case priority is a transparent workflow ordering separate from ML risk; analyst disposition is never treated as model ground truth. Case storage contains only a positively selected immutable snapshot and minimal workflow metadata.
+The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_id}`, and `POST /api/v1/cases/{case_id}/copilot`. Case priority is a transparent workflow ordering separate from ML risk; analyst disposition is never treated as model ground truth. Case storage contains only a positively selected immutable snapshot and minimal workflow metadata. Case detail includes a decision trace assembled only from stored creation, Copilot-generation, and status-transition timestamps.
+
+`GET /api/v1/system/readiness` exposes safe ready/unavailable states for the frozen model, deterministic evidence, reference profile, behavioral and relationship indexes, case store, and Copilot mode. It never exposes configured paths, credentials, transaction identities, or raw history. If the LLM is disabled or unavailable, it explicitly reports that deterministic fallback remains ready.
 
 ## Limitations
 
@@ -184,7 +192,7 @@ The Phase 6 case API adds `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{ca
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 7 verification work is not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 8 is not started automatically.
 
 ## License
 

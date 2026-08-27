@@ -99,19 +99,21 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** an analyst can create, prioritize, investigate, disposition, close, and reopen persisted case detail after restart without exposing identifiers or changing the frozen model.
 
-## Phase 7 — Verification and documentation
+## Phase 7 — Product polish, demo experience, and observability (complete)
 
-- Run the final held-out evaluation once after model/threshold freeze.
-- Document false-positive cost assumptions: `FP × (review cost + friction estimate)`.
-- Add integration tests and audit/reliability checks.
-- Complete README, data card, architecture, evaluation, and engineering decisions.
-- Verify fresh-clone setup and remove generated/large artifacts from Git.
+- Present the investigation flow as five distinct responsibilities: ML prediction, deterministic evidence, strictly prior historical context, advisory AI analysis, and authoritative human decision.
+- Add safe component readiness without exposing paths, credentials, identities, or raw history.
+- Add an event-backed case decision trace using only stored timestamps; persist the Copilot-generation time with a backward-compatible SQLite migration.
+- Complete queue filtering with disposition, visible active-filter state, clear empty/loading/error states, and non-mutating filter behavior.
+- Provide deterministic isolated showcase seeding that refuses replacement without explicit `--force` intent.
+- Strengthen visual distinction between `CRITICAL` workflow priority, ML risk bands, evidence severity, Copilot mode, and analyst disposition.
+- Add readiness, trace, demo reproducibility, overwrite protection, lifecycle, privacy, and regression coverage.
 
-## Phase 8 — Demo polish
+**Exit condition:** the existing intelligence system can be demonstrated end to end with safe readiness feedback, reproducible scenarios, real stored event traces, graceful degradation, and no change to frozen or causal contracts.
 
-- Fix bugs and accessibility/layout problems; add no major features.
-- Prepare stable demo cases covering low, medium, high, graph context, and LLM fallback.
-- Capture screenshots and rehearse the five-minute narrative.
+## Phase 8 — Not started
+
+No Phase 8 scope is implied or started by Phase 7 completion.
 
 ## Major implementation choices
 

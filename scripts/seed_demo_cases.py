@@ -6,8 +6,8 @@ import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
-from backend.app.core.config import get_settings
-from backend.app.schemas.case import CaseCreateRequest
+from backend.app.core.config import Settings, get_settings
+from backend.app.schemas.case import CaseCreateRequest, CaseUpdateRequest
 from backend.app.services.case_service import (
     SQLiteCaseRepository,
     assign_case_priority,
@@ -53,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         "--force",
         action="store_true",
         help="Replace existing generated demo databases under artifacts/demo.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEMO_ROOT,
+        help="Ignored directory for generated demo databases (default: artifacts/demo).",
     )
     return parser.parse_args()
 
@@ -119,17 +125,26 @@ def _build_relationship_database(path: Path, *, force: bool) -> None:
         )
 
 
-def main() -> None:
-    args = parse_args()
-    _build_behavior_database(BEHAVIOR_DATABASE, force=args.force)
-    _build_relationship_database(RELATIONSHIP_DATABASE, force=args.force)
-    _prepare_target(CASE_DATABASE, force=args.force)
+def seed_demo(
+    *,
+    demo_root: Path = DEMO_ROOT,
+    force: bool = False,
+    base_settings: Settings | None = None,
+) -> dict:
+    """Build a repeatable isolated showcase without touching the configured case store."""
+
+    behavior_database = demo_root / "behavior.sqlite"
+    relationship_database = demo_root / "relationship.sqlite"
+    case_database = demo_root / "cases.sqlite"
+    _build_behavior_database(behavior_database, force=force)
+    _build_relationship_database(relationship_database, force=force)
+    _prepare_target(case_database, force=force)
 
     settings = replace(
-        get_settings(),
-        behavioral_history_db=BEHAVIOR_DATABASE,
-        relationship_history_db=RELATIONSHIP_DATABASE,
-        case_database=CASE_DATABASE,
+        base_settings or get_settings(),
+        behavioral_history_db=behavior_database,
+        relationship_history_db=relationship_database,
+        case_database=case_database,
         llm_enabled=False,
         llm_api_key=None,
     )
@@ -165,6 +180,20 @@ def main() -> None:
         if name == "high-risk":
             report = create_copilot_service(settings).investigate(snapshot)
             detail = repository.save_copilot(detail.case.case_id, report)
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(
+                    status="IN_REVIEW",
+                    analyst_note="Demo analyst reviewed the grounded evidence.",
+                ),
+            )
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(
+                    status="ESCALATED",
+                    analyst_note="Escalated for a simulated secondary review.",
+                ),
+            )
         created.append(
             {
                 "scenario": name,
@@ -172,28 +201,30 @@ def main() -> None:
                 "case_priority": detail.case.priority,
                 "ml_risk_level": detail.case.risk_level,
                 "fraud_probability": detail.case.fraud_probability,
+                "status": detail.case.status,
+                "copilot_mode": detail.copilot.mode if detail.copilot else None,
             }
         )
 
-    print(
-        json.dumps(
-            {
-                "generated_artifacts": {
-                    "cases": str(CASE_DATABASE),
-                    "behavior": str(BEHAVIOR_DATABASE),
-                    "relationship": str(RELATIONSHIP_DATABASE),
-                },
-                "showcase_cases": created,
-                "api_environment": {
-                    "FRAUDETECT_CASE_DATABASE": str(CASE_DATABASE),
-                    "FRAUDETECT_BEHAVIORAL_HISTORY_DB": str(BEHAVIOR_DATABASE),
-                    "FRAUDETECT_RELATIONSHIP_HISTORY_DB": str(RELATIONSHIP_DATABASE),
-                },
-                "disclosure": "Generated synthetic showcase context; not PaySim evaluation data.",
-            },
-            indent=2,
-        )
-    )
+    return {
+        "generated_artifacts": {
+            "cases": str(case_database),
+            "behavior": str(behavior_database),
+            "relationship": str(relationship_database),
+        },
+        "showcase_cases": created,
+        "api_environment": {
+            "FRAUDETECT_CASE_DATABASE": str(case_database),
+            "FRAUDETECT_BEHAVIORAL_HISTORY_DB": str(behavior_database),
+            "FRAUDETECT_RELATIONSHIP_HISTORY_DB": str(relationship_database),
+        },
+        "disclosure": "Generated synthetic showcase context; not PaySim evaluation data.",
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    print(json.dumps(seed_demo(demo_root=args.output_dir, force=args.force), indent=2))
 
 
 if __name__ == "__main__":

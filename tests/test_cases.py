@@ -241,6 +241,44 @@ def test_case_copilot_fallback_is_stored_without_changing_workflow_or_model(
     assert detail["case"]["status"] == "OPEN"
     assert detail["case"]["fraud_probability"] == created["case"]["fraud_probability"]
     assert detail["intelligence_snapshot"] == created["intelligence_snapshot"]
+    assert [item["event"] for item in detail["decision_trace"]] == [
+        "CASE_CREATED",
+        "INTELLIGENCE_CAPTURED",
+        "COPILOT_GENERATED",
+    ]
+    assert detail["decision_trace"][0]["occurred_at"] == created["case"]["created_at"]
+    assert detail["decision_trace"][1]["occurred_at"] == created["case"]["created_at"]
+
+
+def test_decision_trace_contains_only_recorded_case_events(
+    case_client: tuple[TestClient, Path],
+) -> None:
+    client, _ = case_client
+    created = create_reference_case(client)
+    case_id = created["case"]["case_id"]
+
+    assert [item["event"] for item in created["decision_trace"]] == [
+        "CASE_CREATED",
+        "INTELLIGENCE_CAPTURED",
+    ]
+    reviewed = client.patch(
+        f"/api/v1/cases/{case_id}",
+        json={"status": "IN_REVIEW", "analyst_note": "Reviewed."},
+    ).json()
+    cleared = client.patch(
+        f"/api/v1/cases/{case_id}", json={"status": "CLEARED"}
+    ).json()
+
+    assert [item["event"] for item in cleared["decision_trace"]] == [
+        "CASE_CREATED",
+        "INTELLIGENCE_CAPTURED",
+        "ANALYST_REVIEWED",
+        "CASE_CLEARED",
+    ]
+    assert "COPILOT_GENERATED" not in {
+        item["event"] for item in reviewed["decision_trace"]
+    }
+    assert all(item["occurred_at"] for item in cleared["decision_trace"])
 
 
 def test_case_copilot_provider_receives_only_approved_snapshot_and_failure_falls_back(

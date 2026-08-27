@@ -1,0 +1,56 @@
+# Deterministic Demo Guide
+
+This workflow demonstrates the product without copying raw PaySim rows into the repository or presenting fixture output as genuine evaluation data. The frozen Phase 2A model performs every score. The local behavior and relationship events are deterministic synthetic fixtures used only to demonstrate investigation mechanics.
+
+## Prepare the showcase
+
+The frozen ignored model bundle must already exist under `artifacts/models/`. From the repository root:
+
+```bash
+make demo
+```
+
+This creates three ignored databases under `artifacts/demo/` and prints the generated case IDs. It does not touch the default analyst case database. If those demo files already exist, the command stops safely. Replace them only with explicit intent:
+
+```bash
+.venv/bin/python scripts/seed_demo_cases.py --force
+```
+
+## Start the product
+
+Terminal 1:
+
+```bash
+FRAUDETECT_CASE_DATABASE=artifacts/demo/cases.sqlite \
+FRAUDETECT_BEHAVIORAL_HISTORY_DB=artifacts/demo/behavior.sqlite \
+FRAUDETECT_RELATIONSHIP_HISTORY_DB=artifacts/demo/relationship.sqlite \
+.venv/bin/uvicorn backend.app.main:app --port 8000
+```
+
+Terminal 2:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open `http://127.0.0.1:5173/`.
+
+## Five-minute narrative
+
+1. Expand system readiness. Explain that the model, deterministic evidence, local historical indexes, case store, and Copilot mode are independently observable without exposing secrets or data paths.
+2. Select the `high-risk` seeded case. Contrast `CRITICAL PRIORITY` (queue ordering) with `HIGH ML RISK` (frozen prediction), then show its saved deterministic fallback report and analyst escalation.
+3. Select `strong-behavioral-deviation`. Show that behavioral comparisons use only events from earlier PaySim steps and that deviation is evidence, not proof.
+4. Select `new-relationship`. Show prior origin network breadth alongside the explicitly first-observed pair; no identities or raw edges are returned.
+5. Select `history-unavailable`. Show honest unavailable-state language instead of invented context.
+6. Select `low-risk`, move it through `IN_REVIEW` and `CLEARED`, then `CLOSED`. Show that each real transition appears in the decision trace and that closed-case controls are disabled.
+
+The displayed case IDs are generated application identifiers. Scenario names appear in the `make demo` output and are not stored in public case payloads.
+
+## Boundaries to state aloud
+
+- PaySim and the showcase history are synthetic; this is not production merchant evidence.
+- The model probability, threshold, risk level, and operating mode are frozen.
+- Behavioral and relationship context use `historical.step < current.step`.
+- The Copilot receives only approved identifier-free context and remains advisory.
+- The analyst owns lifecycle and disposition; no decision is fed back as model truth.

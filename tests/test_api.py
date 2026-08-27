@@ -4,6 +4,12 @@ from fastapi.testclient import TestClient
 
 from backend.app.core.config import get_settings
 from backend.app.main import app
+from backend.app.services.case_service import SQLiteCaseRepository
+from tests.test_risk_api import (
+    create_test_bundle,
+    create_test_history,
+    create_test_relationship_history,
+)
 
 
 def test_health_endpoint() -> None:
@@ -23,3 +29,72 @@ def test_dataset_status_handles_missing_manifest(tmp_path: Path, monkeypatch) ->
     finally:
         get_settings.cache_clear()
 
+
+def test_system_readiness_reports_safe_component_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    artifact_root = tmp_path / "models"
+    behavior_database = tmp_path / "behavior" / "history.sqlite"
+    relationship_database = tmp_path / "relationship" / "history.sqlite"
+    case_database = tmp_path / "cases" / "cases.sqlite"
+    create_test_bundle(artifact_root)
+    create_test_history(behavior_database)
+    create_test_relationship_history(relationship_database)
+    SQLiteCaseRepository(case_database)
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
+    monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(behavior_database))
+    monkeypatch.setenv("FRAUDETECT_RELATIONSHIP_HISTORY_DB", str(relationship_database))
+    monkeypatch.setenv("FRAUDETECT_CASE_DATABASE", str(case_database))
+    monkeypatch.setenv("FRAUDETECT_LLM_ENABLED", "false")
+    monkeypatch.setenv("OPENAI_API_KEY", "do-not-expose-this-secret")
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).get("/api/v1/system/readiness")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert {item["key"] for item in payload["components"]} == {
+        "ml_model",
+        "deterministic_evidence",
+        "reference_profile",
+        "behavioral_history",
+        "relationship_history",
+        "case_store",
+        "llm_copilot",
+    }
+    copilot = next(item for item in payload["components"] if item["key"] == "llm_copilot")
+    assert copilot["mode"] == "deterministic_fallback"
+    assert copilot["fallback_available"] is True
+    serialized = response.text
+    assert "do-not-expose-this-secret" not in serialized
+    assert str(tmp_path) not in serialized
+    assert "OPENAI_API_KEY" not in serialized
+
+
+def test_system_readiness_degrades_when_optional_artifacts_are_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(tmp_path / "models"))
+    monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(tmp_path / "behavior.sqlite"))
+    monkeypatch.setenv(
+        "FRAUDETECT_RELATIONSHIP_HISTORY_DB", str(tmp_path / "relationship.sqlite")
+    )
+    monkeypatch.setenv("FRAUDETECT_CASE_DATABASE", str(tmp_path / "cases.sqlite"))
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).get("/api/v1/system/readiness")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert all(
+        item["status"] == "unavailable"
+        for item in payload["components"]
+        if item["key"] != "llm_copilot"
+    )
+    assert not (tmp_path / "cases.sqlite").exists()

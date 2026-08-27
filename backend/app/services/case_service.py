@@ -19,6 +19,7 @@ from backend.app.schemas.case import (
     CaseStatusHistoryItem,
     CaseSummary,
     CaseUpdateRequest,
+    DecisionTraceItem,
     EvidenceSummary,
 )
 from backend.app.schemas.copilot import (
@@ -212,6 +213,11 @@ class SQLiteCaseRepository:
                     "CREATE INDEX IF NOT EXISTS case_history_idx ON case_status_history "
                     "(case_id, sequence)"
                 )
+                columns = {
+                    str(row[1]) for row in connection.execute("PRAGMA table_info(cases)")
+                }
+                if "copilot_generated_at" not in columns:
+                    connection.execute("ALTER TABLE cases ADD COLUMN copilot_generated_at TEXT")
         except sqlite3.Error as error:
             raise CaseStoreUnavailableError("Case store could not be initialized") from error
 
@@ -275,6 +281,7 @@ class SQLiteCaseRepository:
         self, connection: sqlite3.Connection, row: sqlite3.Row
     ) -> CaseDetailResponse:
         copilot_json = row["copilot_json"]
+        history = self._history(connection, str(row["case_id"]))
         return CaseDetailResponse(
             case=self._summary(row),
             intelligence_snapshot=SanitizedInvestigationContext.model_validate_json(
@@ -286,8 +293,69 @@ class SQLiteCaseRepository:
                 if copilot_json is not None
                 else None
             ),
-            status_history=self._history(connection, str(row["case_id"])),
+            status_history=history,
+            decision_trace=self._decision_trace(row, history),
         )
+
+    @staticmethod
+    def _decision_trace(
+        row: sqlite3.Row, history: list[CaseStatusHistoryItem]
+    ) -> list[DecisionTraceItem]:
+        created_at = str(row["created_at"])
+        trace = [
+            DecisionTraceItem(
+                event="CASE_CREATED",
+                occurred_at=created_at,
+                actor="SYSTEM",
+                label="Case created",
+                detail="An identifier-free investigation case was stored.",
+            ),
+            DecisionTraceItem(
+                event="INTELLIGENCE_CAPTURED",
+                occurred_at=created_at,
+                actor="SYSTEM",
+                label="Intelligence snapshot captured",
+                detail=(
+                    "Frozen ML output, deterministic evidence, and available historical "
+                    "context were captured together."
+                ),
+            ),
+        ]
+        copilot_generated_at = row["copilot_generated_at"]
+        if copilot_generated_at is not None:
+            trace.append(
+                DecisionTraceItem(
+                    event="COPILOT_GENERATED",
+                    occurred_at=str(copilot_generated_at),
+                    actor="COPILOT",
+                    label="Advisory analysis generated",
+                    detail="The saved identifier-free snapshot was summarized for analyst review.",
+                )
+            )
+        event_for_status = {
+            "IN_REVIEW": ("ANALYST_REVIEWED", "Analyst review started"),
+            "ESCALATED": ("CASE_ESCALATED", "Case escalated"),
+            "CLEARED": ("CASE_CLEARED", "Case cleared"),
+            "CLOSED": ("CASE_CLOSED", "Case closed"),
+        }
+        for item in history:
+            mapped = event_for_status.get(item.new_status)
+            if mapped is None:
+                continue
+            event, label = mapped
+            trace.append(
+                DecisionTraceItem(
+                    event=event,
+                    occurred_at=item.occurred_at,
+                    actor="ANALYST",
+                    label=label,
+                    detail=(
+                        f"Disposition: {item.disposition}."
+                        + (" An analyst note was recorded." if item.note_recorded else "")
+                    ),
+                )
+            )
+        return sorted(trace, key=lambda item: item.occurred_at)
 
     @staticmethod
     def _new_case_id() -> str:
@@ -312,9 +380,15 @@ class SQLiteCaseRepository:
                     try:
                         connection.execute(
                             """
-                            INSERT INTO cases VALUES (
+                            INSERT INTO cases (
+                                case_id, status, priority, created_at, updated_at, source_type,
+                                transaction_reference_available, model_version, fraud_probability,
+                                risk_level, operating_mode, analyst_disposition, analyst_note,
+                                disposition_at, evidence_summary_json, snapshot_json,
+                                limitations_json, copilot_json, copilot_generated_at
+                            ) VALUES (
                                 ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                'NONE', NULL, NULL, ?, ?, ?, NULL
+                                'NONE', NULL, NULL, ?, ?, ?, NULL, NULL
                             )
                             """,
                             (
@@ -503,8 +577,9 @@ class SQLiteCaseRepository:
                 if str(row["status"]) == "CLOSED":
                     raise InvalidCaseTransitionError("Closed cases are immutable")
                 connection.execute(
-                    "UPDATE cases SET copilot_json = ?, updated_at = ? WHERE case_id = ?",
-                    (response.model_dump_json(), now, case_id),
+                    "UPDATE cases SET copilot_json = ?, copilot_generated_at = ?, "
+                    "updated_at = ? WHERE case_id = ?",
+                    (response.model_dump_json(), now, now, case_id),
                 )
                 row = connection.execute(
                     "SELECT * FROM cases WHERE case_id = ?", (case_id,)

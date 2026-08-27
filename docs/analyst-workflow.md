@@ -77,6 +77,6 @@ The high-risk case also receives a clearly labeled deterministic Copilot fallbac
 
 ## Analyst workspace
 
-The React workspace provides a filterable queue, case creation, immutable ML assessment, deterministic evidence cards, behavioral and relationship aggregates, limitations, Copilot generation, controlled status actions, analyst notes, and status history. It deliberately labels case priority separately from ML risk and human disposition separately from prediction.
+The React workspace provides a filterable queue, case creation, immutable ML assessment, deterministic evidence cards, behavioral and relationship aggregates, limitations, Copilot generation, controlled status actions, analyst notes, and an investigation decision trace. It deliberately labels case priority separately from ML risk and human disposition separately from prediction.
 
-The UI includes empty, API error, loading, no-history, and Copilot-fallback states. It never receives the internal reference used at creation.
+The decision trace contains only persisted facts: case/snapshot capture time, Copilot-generation time when present, and actual analyst lifecycle transitions. It does not infer missing events or fabricate timestamps. The UI includes empty, API error, loading, no-history, component-readiness, and Copilot-fallback states. It never receives the internal reference used at creation.
