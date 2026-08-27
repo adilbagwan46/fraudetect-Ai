@@ -82,6 +82,13 @@ Install the optional provider dependency with:
 
 Never put API keys in frontend environment variables or commit `.env`.
 
+The LLM is disabled by default. No API key is needed for development, demos, or the automated test
+suite; those paths use the deterministic fallback. When enabled, the API key is read only by the
+backend and is excluded from settings representations, responses, readiness output, stored reports,
+audit events, logs, and frontend bundles. Readiness reports whether the provider is enabled and
+configured, but deliberately does not make a paid network request or claim that the external service
+is available.
+
 ## Structured report and validation
 
 `InvestigationReport` has these frontend-ready sections:
@@ -120,6 +127,13 @@ Disabled configuration, missing keys, unsupported providers, SDK absence, timeou
 refusals/missing parsed output, malformed schemas, unsupported claims, and grounding failures all
 degrade to this controlled mode. Internal exception details are not returned.
 
+New reports also include safe `execution` metadata: whether a real provider was attempted and
+succeeded, locally measured end-to-end generation elapsed time when a provider was attempted, and a
+bounded failure category such as
+`provider_timeout`, `invalid_output`, or `grounding_rejected`. It contains no prompts, provider
+payloads, request IDs, exception text, credentials, or identifiers. The field is optional so reports
+stored by Phase 6–8 load unchanged; the application does not invent metadata for them.
+
 ## API
 
 `POST /api/v1/risk/investigate/copilot` accepts the same mutually exclusive request modes as the
@@ -147,5 +161,7 @@ availability and retain their previous behavior.
   tested with injected SDK-shaped clients.
 - Provider availability, model access, latency, cost, and rate limits depend on the configured
   OpenAI account.
+- Automated readiness is configuration-only. A configured provider can still fail at generation
+  time; that request safely falls back and records only its non-sensitive failure category.
 - The Copilot is advisory. Human analysts retain responsibility and organizational policy governs
   any action.

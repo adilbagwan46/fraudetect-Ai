@@ -68,6 +68,9 @@ def test_system_readiness_reports_safe_component_state(
     copilot = next(item for item in payload["components"] if item["key"] == "llm_copilot")
     assert copilot["mode"] == "deterministic_fallback"
     assert copilot["fallback_available"] is True
+    assert copilot["provider_enabled"] is False
+    assert copilot["provider_configured"] is True
+    assert copilot["external_availability"] == "not_applicable"
     serialized = response.text
     assert "do-not-expose-this-secret" not in serialized
     assert str(tmp_path) not in serialized
@@ -98,3 +101,27 @@ def test_system_readiness_degrades_when_optional_artifacts_are_missing(
         if item["key"] != "llm_copilot"
     )
     assert not (tmp_path / "cases.sqlite").exists()
+
+
+def test_system_readiness_reports_configuration_without_external_provider_call(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(tmp_path / "models"))
+    monkeypatch.setenv("FRAUDETECT_LLM_ENABLED", "true")
+    monkeypatch.setenv("FRAUDETECT_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "configured-but-never-called-secret")
+    get_settings.cache_clear()
+    try:
+        response = TestClient(app).get("/api/v1/system/readiness")
+    finally:
+        get_settings.cache_clear()
+
+    copilot = next(
+        item for item in response.json()["components"] if item["key"] == "llm_copilot"
+    )
+    assert copilot["status"] == "ready"
+    assert copilot["mode"] == "real_llm_configured"
+    assert copilot["provider_enabled"] is True
+    assert copilot["provider_configured"] is True
+    assert copilot["external_availability"] == "not_checked"
+    assert "configured-but-never-called-secret" not in response.text

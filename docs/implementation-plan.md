@@ -123,9 +123,21 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** analysts can inspect factual case actions and aggregate operational workload without exposing identifiers or changing frozen, deterministic, causal, Copilot, priority, or human-decision contracts.
 
-## Phase 9 — Not started
+## Phase 9 — Real LLM Copilot operationalization (complete)
 
-No Phase 9 scope is implied or started by Phase 8 completion.
+- Preserve the provider-neutral interface and server-side OpenAI Responses structured-output adapter.
+- Add safe per-generation attempt, success, latency, and bounded failure metadata while keeping the
+  field optional for legacy Phase 6–8 reports.
+- Report enabled/configured provider state without external readiness calls or invented availability.
+- Classify timeout, provider, malformed-output, grounding, configuration, and unexpected failures;
+  every failure returns the existing explicitly non-LLM deterministic report.
+- Strengthen grounding regression tests for invented history, identity, and unsupported probability.
+- Make real-provider and deterministic-fallback modes unmistakable in the analyst UI.
+- Verify configuration, privacy, case immutability, audit persistence, metrics, legacy database
+  compatibility, and provider behavior entirely with fake clients.
+
+**Exit condition:** a real provider can be enabled safely without weakening deterministic fraud
+intelligence, privacy, grounding, case, lifecycle, audit, or offline-fallback contracts.
 
 ## Major implementation choices
 

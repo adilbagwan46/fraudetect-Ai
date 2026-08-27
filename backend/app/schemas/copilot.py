@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.risk import (
     BehavioralContext,
@@ -15,6 +15,17 @@ from backend.app.schemas.risk import (
 )
 
 CopilotMode = Literal["real_llm", "deterministic_fallback"]
+CopilotFailureCategory = Literal[
+    "disabled",
+    "missing_credentials",
+    "unsupported_provider",
+    "provider_unavailable",
+    "provider_timeout",
+    "provider_error",
+    "invalid_output",
+    "grounding_rejected",
+    "unexpected_error",
+]
 SignalImportance = Literal["HIGH", "MEDIUM", "LOW", "INFO"]
 
 
@@ -121,6 +132,34 @@ class InvestigationReport(BaseModel):
     disclaimer: str = Field(min_length=1, max_length=500)
 
 
+class CopilotExecutionMetadata(BaseModel):
+    """Safe facts about this generation attempt; absent on legacy stored reports."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    generated_by: Literal["real_provider", "deterministic_fallback"]
+    provider_attempted: bool
+    provider_succeeded: bool
+    generation_latency_ms: int | None = Field(default=None, ge=0)
+    failure_category: CopilotFailureCategory | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_provenance(self) -> CopilotExecutionMetadata:
+        if self.generated_by == "real_provider":
+            if not self.provider_attempted or not self.provider_succeeded:
+                raise ValueError("real-provider output requires a successful provider attempt")
+            if self.failure_category is not None:
+                raise ValueError("successful provider output cannot have a failure category")
+        else:
+            if self.provider_succeeded:
+                raise ValueError("deterministic fallback cannot report provider success")
+            if self.failure_category is None:
+                raise ValueError("deterministic fallback requires a bounded failure category")
+        if self.provider_attempted != (self.generation_latency_ms is not None):
+            raise ValueError("latency is present exactly when a provider was attempted")
+        return self
+
+
 class CopilotInvestigationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -131,3 +170,25 @@ class CopilotInvestigationResponse(BaseModel):
     model: str | None = None
     fallback_reason: str | None = None
     relationship_context: RelationshipContext
+    execution: CopilotExecutionMetadata | None = None
+
+    @model_validator(mode="after")
+    def require_truthful_mode_metadata(self) -> CopilotInvestigationResponse:
+        if self.mode == "real_llm":
+            if not self.ai_available or self.provider == "deterministic_fallback":
+                raise ValueError("real LLM mode requires an available real provider")
+            if self.fallback_reason is not None:
+                raise ValueError("real LLM output cannot have a fallback reason")
+            if self.execution is not None and self.execution.generated_by != "real_provider":
+                raise ValueError("real LLM mode contradicts execution provenance")
+        else:
+            if self.ai_available or self.provider != "deterministic_fallback":
+                raise ValueError("fallback mode must identify deterministic fallback")
+            if self.fallback_reason is None:
+                raise ValueError("fallback mode requires a safe fallback reason")
+            if (
+                self.execution is not None
+                and self.execution.generated_by != "deterministic_fallback"
+            ):
+                raise ValueError("fallback mode contradicts execution provenance")
+        return self

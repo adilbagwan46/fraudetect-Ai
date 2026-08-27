@@ -6,7 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.core.config import Settings
-from backend.app.schemas.copilot import InvestigationReport, SanitizedInvestigationContext
+from backend.app.schemas.copilot import (
+    CopilotExecutionMetadata,
+    CopilotInvestigationResponse,
+    InvestigationReport,
+    SanitizedInvestigationContext,
+)
 from backend.app.schemas.risk import (
     BehavioralContext,
     DerivedFeatures,
@@ -22,7 +27,11 @@ from backend.app.services.behavioral_service import (
 )
 from backend.app.services.copilot.context_builder import build_sanitized_context
 from backend.app.services.copilot.prompts import SYSTEM_PROMPT
-from backend.app.services.copilot.provider import OpenAIInvestigationProvider
+from backend.app.services.copilot.provider import (
+    CopilotProviderTimeoutError,
+    CopilotProviderUnavailableError,
+    OpenAIInvestigationProvider,
+)
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
 from backend.app.services.evidence_service import build_investigation_context
 from backend.app.services.relationship_service import (
@@ -167,11 +176,67 @@ def test_provider_receives_only_sanitized_context() -> None:
     first = CopilotService(provider).investigate(context)
     second = CopilotService(provider).investigate(context)
 
-    assert first == second
+    assert first.report == second.report
+    assert first.mode == second.mode
+    assert first.provider == second.provider
     assert first.mode == "real_llm"
+    assert first.execution is not None
+    assert first.execution.generated_by == "real_provider"
+    assert first.execution.provider_attempted is True
+    assert first.execution.provider_succeeded is True
+    assert first.execution.failure_category is None
+    assert first.execution.generation_latency_ms is not None
     assert len(provider.contexts) == 2
     assert provider.contexts[0] == context
     assert "transaction_reference" not in provider.contexts[0].model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "generated_by": "real_provider",
+            "provider_attempted": True,
+            "provider_succeeded": False,
+            "generation_latency_ms": 5,
+            "failure_category": "provider_error",
+        },
+        {
+            "generated_by": "deterministic_fallback",
+            "provider_attempted": True,
+            "provider_succeeded": True,
+            "generation_latency_ms": 5,
+            "failure_category": None,
+        },
+        {
+            "generated_by": "deterministic_fallback",
+            "provider_attempted": False,
+            "provider_succeeded": False,
+            "generation_latency_ms": 5,
+            "failure_category": "disabled",
+        },
+        {
+            "generated_by": "deterministic_fallback",
+            "provider_attempted": False,
+            "provider_succeeded": False,
+            "generation_latency_ms": None,
+            "failure_category": None,
+        },
+    ],
+)
+def test_execution_metadata_rejects_contradictory_provenance(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        CopilotExecutionMetadata.model_validate(payload)
+
+
+def test_response_schema_rejects_mode_execution_contradictions() -> None:
+    context = sanitized_context(behavioral=unavailable_behavioral_context())
+    fallback_payload = CopilotService(None).investigate(context).model_dump()
+    real_execution = CopilotService(CapturingProvider()).investigate(context).execution
+    fallback_payload["execution"] = real_execution.model_dump() if real_execution else None
+
+    with pytest.raises(ValidationError):
+        CopilotInvestigationResponse.model_validate(fallback_payload)
 
 
 def test_openai_provider_uses_separate_system_and_inert_data_messages() -> None:
@@ -203,6 +268,24 @@ def test_openai_provider_uses_separate_system_and_inert_data_messages() -> None:
     assert "<DATA_CONTEXT>" in captured["input"][1]["content"]
     assert "TX-" not in captured["input"][1]["content"]
     assert "origin_key" not in captured["input"][1]["content"]
+
+
+def test_openai_provider_converts_timeout_without_exposing_details() -> None:
+    class TimedOutResponses:
+        def parse(self, **kwargs):
+            raise TimeoutError("private upstream timeout detail")
+
+    provider = OpenAIInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(responses=TimedOutResponses()),
+    )
+
+    with pytest.raises(CopilotProviderTimeoutError, match="OpenAI request timed out") as caught:
+        provider.generate(sanitized_context(behavioral=unavailable_behavioral_context()))
+
+    assert "private upstream timeout detail" not in str(caught.value)
 
 
 def test_fallback_handles_no_and_limited_history_without_fabrication() -> None:
@@ -308,18 +391,23 @@ def test_strong_deviation_is_described_without_becoming_a_fraud_claim() -> None:
 
 
 @pytest.mark.parametrize(
-    ("settings", "reason"),
+    ("settings", "reason", "category"),
     [
-        (Settings(llm_enabled=False), "disabled"),
-        (Settings(llm_enabled=True, llm_api_key=None), "not configured"),
+        (Settings(llm_enabled=False), "disabled", "disabled"),
+        (
+            Settings(llm_enabled=True, llm_api_key=None),
+            "not configured",
+            "missing_credentials",
+        ),
         (
             Settings(llm_enabled=True, llm_provider="unsupported", llm_api_key="unused"),
             "unsupported",
+            "unsupported_provider",
         ),
     ],
 )
 def test_disabled_or_misconfigured_real_provider_falls_back(
-    settings: Settings, reason: str
+    settings: Settings, reason: str, category: str
 ) -> None:
     response = create_copilot_service(settings).investigate(
         sanitized_context(behavioral=unavailable_behavioral_context())
@@ -328,6 +416,11 @@ def test_disabled_or_misconfigured_real_provider_falls_back(
     assert response.mode == "deterministic_fallback"
     assert response.provider == "deterministic_fallback"
     assert reason in (response.fallback_reason or "").lower()
+    assert response.execution is not None
+    assert response.execution.provider_attempted is False
+    assert response.execution.provider_succeeded is False
+    assert response.execution.generation_latency_ms is None
+    assert response.execution.failure_category == category
 
 
 def test_provider_failure_and_invalid_output_are_safely_replaced() -> None:
@@ -352,6 +445,38 @@ def test_provider_failure_and_invalid_output_are_safely_replaced() -> None:
     assert failed.mode == "deterministic_fallback"
     assert invalid.mode == "deterministic_fallback"
     assert "internal detail" not in (failed.fallback_reason or "")
+    assert failed.execution is not None
+    assert failed.execution.failure_category == "provider_timeout"
+    assert failed.execution.provider_attempted is True
+    assert failed.execution.generation_latency_ms is not None
+    assert invalid.execution is not None
+    assert invalid.execution.failure_category == "invalid_output"
+
+
+@pytest.mark.parametrize(
+    ("error", "category"),
+    [
+        (CopilotProviderUnavailableError("private network detail"), "provider_error"),
+        (RuntimeError("private unexpected detail"), "unexpected_error"),
+    ],
+)
+def test_provider_errors_use_bounded_categories_without_raw_details(
+    error: Exception, category: str
+) -> None:
+    class ErrorProvider:
+        name = "error-provider"
+        model = "error-model"
+
+        def generate(self, context):
+            raise error
+
+    response = CopilotService(ErrorProvider()).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.execution is not None
+    assert response.execution.failure_category == category
+    assert "private" not in (response.fallback_reason or "")
 
 
 def test_unsupported_claim_from_valid_provider_report_is_rejected() -> None:
@@ -367,6 +492,79 @@ def test_unsupported_claim_from_valid_provider_report_is_rejected() -> None:
 
     assert response.mode == "deterministic_fallback"
     assert "money laundering" not in response.report.model_dump_json().lower()
+
+
+@pytest.mark.parametrize(
+    "invented_text",
+    [
+        "Previous transactions indicate an established suspicious pattern.",
+        "Earlier activity establishes an enduring suspicious pattern.",
+        "The account holder identity is confirmed as Jane Example.",
+        "The fraud probability is 96%.",
+        "The fraud probability is 0.96.",
+    ],
+)
+def test_provider_cannot_invent_history_identity_or_probability(invented_text: str) -> None:
+    class InventingProvider(CapturingProvider):
+        def generate(self, context):
+            report = super().generate(context)
+            report.behavioral_analysis.summary = invented_text
+            return report
+
+    response = CopilotService(InventingProvider()).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert response.execution is not None
+    assert response.execution.failure_category == "grounding_rejected"
+    assert invented_text not in response.report.model_dump_json()
+
+
+def test_provider_cannot_hide_invented_relationship_history_in_limitation() -> None:
+    relationship = build_relationship_context(
+        RelationshipTransaction("TX-current", 2, 20, "C-private", "M-private"),
+        [],
+    )
+
+    class InventingRelationshipProvider(CapturingProvider):
+        def generate(self, context):
+            report = super().generate(context)
+            report.relationship_analysis.summary = (
+                "Earlier pair interactions establish a persistent suspicious pattern."
+            )
+            report.relationship_analysis.history_limitation = (
+                "No prior relationship baseline is available."
+            )
+            return report
+
+    response = CopilotService(InventingRelationshipProvider()).investigate(
+        sanitized_context(
+            behavioral=unavailable_behavioral_context(),
+            relationship=relationship,
+        )
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert response.execution is not None
+    assert response.execution.failure_category == "grounding_rejected"
+
+
+def test_provider_cannot_recommend_irreversible_external_action() -> None:
+    class IrreversibleActionProvider(CapturingProvider):
+        def generate(self, context):
+            report = super().generate(context)
+            report.recommended_actions[0].action = (
+                "Report the account holder to law enforcement."
+            )
+            return report
+
+    response = CopilotService(IrreversibleActionProvider()).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert "law enforcement" not in response.report.model_dump_json().lower()
 
 
 def test_provider_cannot_override_deterministic_simulated_action() -> None:
@@ -468,6 +666,18 @@ def test_settings_repr_never_exposes_api_key() -> None:
     settings = Settings(llm_enabled=True, llm_api_key="sk-test-secret-not-real")
 
     assert "sk-test-secret-not-real" not in repr(settings)
+
+
+def test_legacy_copilot_report_loads_without_invented_execution_metadata() -> None:
+    current = CopilotService(None).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+    legacy_payload = current.model_dump(exclude={"execution"})
+
+    restored = CopilotInvestigationResponse.model_validate(legacy_payload)
+
+    assert restored.execution is None
+    assert restored.report == current.report
 
 
 def test_investigation_report_schema_rejects_extra_or_malformed_fields() -> None:

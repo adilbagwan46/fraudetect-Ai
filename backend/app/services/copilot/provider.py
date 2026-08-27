@@ -14,6 +14,10 @@ class CopilotProviderUnavailableError(CopilotProviderError):
     """Raised when a configured provider cannot complete a request."""
 
 
+class CopilotProviderTimeoutError(CopilotProviderUnavailableError):
+    """Raised when a configured provider exceeds its request timeout."""
+
+
 class CopilotProviderInvalidOutputError(CopilotProviderError):
     """Raised when provider output does not satisfy the report contract."""
 
@@ -41,13 +45,15 @@ class OpenAIInvestigationProvider:
         if not api_key:
             raise CopilotProviderUnavailableError("OpenAI API key is not configured")
         self.model = model
+        self._timeout_errors: tuple[type[BaseException], ...] = (TimeoutError,)
         if client is None:
             try:
-                from openai import OpenAI
+                from openai import APITimeoutError, OpenAI
             except ImportError as error:
                 raise CopilotProviderUnavailableError(
                     "OpenAI SDK is unavailable; install the llm dependency"
                 ) from error
+            self._timeout_errors = (TimeoutError, APITimeoutError)
             client = OpenAI(api_key=api_key, timeout=timeout_seconds)
         self._client = client
 
@@ -62,6 +68,8 @@ class OpenAIInvestigationProvider:
                 text_format=InvestigationReport,
                 store=False,
             )
+        except self._timeout_errors as error:
+            raise CopilotProviderTimeoutError("OpenAI request timed out") from error
         except Exception as error:
             raise CopilotProviderUnavailableError("OpenAI request failed") from error
 

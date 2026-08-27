@@ -8,7 +8,7 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 8 Auditability and Operational Intelligence is implemented. Analysts can follow an append-only, privacy-safe case timeline and inspect aggregate workload, lifecycle, priority, disposition, and Copilot-mode counts without changing any fraud intelligence. The existing readiness, queue, immutable case snapshot, and deterministic showcase remain intact. See [docs/analyst-workflow.md](docs/analyst-workflow.md), [docs/auditability.md](docs/auditability.md), and [docs/demo-guide.md](docs/demo-guide.md).
+Phase 9 Real LLM Copilot Operationalization is implemented. Optional real-provider reports now carry safe attempt, success, latency, and bounded failure metadata; configuration-only readiness never makes a paid external call; and every provider failure remains a clearly labeled deterministic fallback. Legacy reports continue to load without invented metadata. See [docs/llm-copilot.md](docs/llm-copilot.md), [docs/analyst-workflow.md](docs/analyst-workflow.md), and [docs/auditability.md](docs/auditability.md).
 
 The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
@@ -138,7 +138,7 @@ The command creates an isolated case store plus synthetic behavioral and relatio
 
 ## Environment variables
 
-See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires `FRAUDETECT_LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`; no API key is needed for prediction, evidence, behavior, or fallback reports. Provider secrets are never sent to the frontend.
+See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires `FRAUDETECT_LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`; no API key is needed for development, testing, prediction, evidence, behavior, or fallback reports. Provider secrets are never sent to the frontend. Readiness reports configuration state only and does not call the external provider.
 
 ## Testing
 
@@ -175,7 +175,7 @@ The rationale for model/LLM separation, PaySim, synthetic enrichment, chronologi
 
 The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`, `relationship_context`, and separate typed relationship evidence; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
 
-`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
+`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe execution metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
 
 The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_id}`, and `POST /api/v1/cases/{case_id}/copilot`. Case priority is a transparent workflow ordering separate from ML risk; analyst disposition is never treated as model ground truth. Case storage contains only a positively selected immutable snapshot and minimal workflow metadata. Case detail includes a decision trace assembled only from stored creation, Copilot-generation, and status-transition timestamps.
 
@@ -194,7 +194,7 @@ The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_i
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 9 is not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 10 is not started automatically.
 
 ## License
 

@@ -253,6 +253,28 @@ def test_case_copilot_fallback_is_stored_without_changing_workflow_or_model(
     assert detail["decision_trace"][1]["occurred_at"] == created["case"]["created_at"]
 
 
+def test_legacy_stored_copilot_report_without_execution_metadata_still_loads(
+    case_client: tuple[TestClient, Path],
+) -> None:
+    client, database = case_client
+    created = create_reference_case(client)
+    case_id = created["case"]["case_id"]
+    generated = client.post(f"/api/v1/cases/{case_id}/copilot").json()
+    generated.pop("execution")
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE cases SET copilot_json = ? WHERE case_id = ?",
+            (json.dumps(generated), case_id),
+        )
+
+    restored = client.get(f"/api/v1/cases/{case_id}")
+
+    assert restored.status_code == 200
+    assert restored.json()["copilot"]["execution"] is None
+    assert restored.json()["intelligence_snapshot"] == created["intelligence_snapshot"]
+
+
 def test_decision_trace_contains_only_recorded_case_events(
     case_client: tuple[TestClient, Path],
 ) -> None:

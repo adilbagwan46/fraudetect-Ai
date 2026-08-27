@@ -36,6 +36,9 @@ class ReadinessComponent(BaseModel):
     version: str | None = None
     mode: str | None = None
     fallback_available: bool = False
+    provider_enabled: bool | None = None
+    provider_configured: bool | None = None
+    external_availability: Literal["not_checked", "not_applicable"] | None = None
     message: str
 
 

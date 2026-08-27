@@ -50,6 +50,13 @@ def test_manual_copilot_endpoint_uses_explicit_fallback_without_fabricated_histo
         assert payload["mode"] == "deterministic_fallback"
         assert payload["provider"] == "deterministic_fallback"
         assert payload["ai_available"] is False
+        assert payload["execution"] == {
+            "generated_by": "deterministic_fallback",
+            "provider_attempted": False,
+            "provider_succeeded": False,
+            "generation_latency_ms": None,
+            "failure_category": "disabled",
+        }
         assert payload["relationship_context"]["context_available"] is False
         assert "unavailable" in (
             payload["report"]["relationship_analysis"]["history_limitation"]
@@ -89,6 +96,8 @@ def test_reference_copilot_sends_only_sanitized_payload_and_never_echoes_referen
         payload = response.json()
         assert payload["mode"] == "real_llm"
         assert payload["provider"] == "deterministic_test_provider"
+        assert payload["execution"]["generated_by"] == "real_provider"
+        assert payload["execution"]["provider_succeeded"] is True
         assert len(provider.payloads) == 1
         provider_payload = provider.payloads[0].model_dump_json()
         for forbidden in (
@@ -100,6 +109,8 @@ def test_reference_copilot_sends_only_sanitized_payload_and_never_echoes_referen
             "origin_key",
             "destination_key",
             "raw_transaction_history",
+            "DATA_CONTEXT",
+            "You are Fraudetect AI",
         ):
             assert forbidden not in provider_payload
             assert forbidden not in response.text
@@ -138,7 +149,9 @@ def test_api_provider_failure_returns_controlled_fallback(
         )
 
         assert response.status_code == 200
-        assert response.json()["mode"] == "deterministic_fallback"
+        payload = response.json()
+        assert payload["mode"] == "deterministic_fallback"
+        assert payload["execution"]["failure_category"] == "provider_timeout"
         assert "secret provider diagnostic" not in response.text
     finally:
         app.dependency_overrides.pop(get_copilot_service, None)

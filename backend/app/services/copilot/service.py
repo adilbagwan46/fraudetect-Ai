@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from pydantic import ValidationError
 
 from backend.app.core.config import Settings
 from backend.app.schemas.copilot import (
+    CopilotExecutionMetadata,
+    CopilotFailureCategory,
     CopilotInvestigationResponse,
     InvestigationReport,
     ReportBehavioralAnalysis,
@@ -17,7 +20,9 @@ from backend.app.schemas.copilot import (
     SanitizedInvestigationContext,
 )
 from backend.app.services.copilot.provider import (
-    CopilotProviderError,
+    CopilotProviderInvalidOutputError,
+    CopilotProviderTimeoutError,
+    CopilotProviderUnavailableError,
     InvestigationLLMProvider,
     OpenAIInvestigationProvider,
 )
@@ -47,10 +52,16 @@ FORBIDDEN_REPORT_PATTERNS = (
     r"\bmoney laundering\b",
     r"\bknown criminal\b",
     r"(?<!not )\bproves? fraud\b",
+    r"\b(?:confirms?|demonstrates?|establishes?) (?:that )?(?:this |the )?"
+    r"(?:transaction )?(?:is )?fraud\b",
     r"\bfraudulent transaction\b",
     r"\bclose (?:the )?(?:customer'?s )?account\b",
+    r"\bterminate (?:the )?(?:customer|account|relationship)\b",
+    r"\breport (?:the )?(?:customer|account holder|transaction) to "
+    r"(?:law enforcement|police|authorities)\b",
     r"\bblacklist\b",
     r"\bpermanently block\b",
+    r"\bidentit(?:y|ies)\b",
     r"\bshared identit(?:y|ies)\b",
     r"\bhidden relationships?\b",
     r"\bunknown network connections?\b",
@@ -139,10 +150,22 @@ def validate_report_grounding(
 
     behavior = context.behavioral_context
     limitation = (report.behavioral_analysis.history_limitation or "").lower()
+    behavior_summary = report.behavioral_analysis.summary.lower()
     if not behavior.history_available and not (
         "no prior" in limitation or "unavailable" in limitation
     ):
         raise CopilotGroundingError("No-history report must state the behavioral limitation")
+    if not behavior.history_available and not any(
+        marker in behavior_summary
+        for marker in ("no behavioral comparison", "no prior", "unavailable")
+    ):
+        raise CopilotGroundingError("No-history behavioral summary must not imply observations")
+    if not behavior.history_available and re.search(
+        r"\b(?:prior transactions? show|previous transactions? (?:show|indicate)|history shows)\b",
+        report.behavioral_analysis.summary,
+        flags=re.IGNORECASE,
+    ):
+        raise CopilotGroundingError("Report invents behavioral history")
     if behavior.history_available and behavior.prior_transaction_count <= 2:
         if "limited" not in limitation and "only" not in limitation:
             raise CopilotGroundingError("Limited behavioral history must be qualified")
@@ -152,6 +175,7 @@ def validate_report_grounding(
         f"{report.relationship_analysis.summary} "
         f"{report.relationship_analysis.history_limitation or ''}"
     ).lower()
+    relationship_summary = report.relationship_analysis.summary.lower()
     relationship_ids = {
         item.evidence_id
         for item in context.evidence
@@ -161,10 +185,13 @@ def validate_report_grounding(
         set(report.relationship_analysis.evidence_ids) & relationship_ids
     ):
         raise CopilotGroundingError("Relationship analysis must cite relationship evidence")
-    if not relationship.context_available and "unavailable" not in relationship_text:
+    if not relationship.context_available and "unavailable" not in relationship_summary:
         raise CopilotGroundingError("Unavailable relationship context must be disclosed")
     if relationship.context_available and not relationship.history_available:
-        if "no prior" not in relationship_text and "new relationship" not in relationship_text:
+        if (
+            "no prior" not in relationship_summary
+            and "new relationship" not in relationship_summary
+        ):
             raise CopilotGroundingError("New relationship status must be stated accurately")
         if "previously observed" in relationship_text:
             raise CopilotGroundingError("Report invents prior relationship history")
@@ -201,6 +228,13 @@ def validate_report_grounding(
         percentage = float(match.group(1))
         if not any(abs(percentage - allowed) <= 0.11 for allowed in allowed_percentages):
             raise CopilotGroundingError("Report introduced an unsupported percentage")
+    for match in re.finditer(
+        r"\bfraud probability(?: is| of)?\s+(0(?:\.\d+)?|1(?:\.0+)?)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        if abs(float(match.group(1)) - context.model_output.fraud_probability) > 0.0001:
+            raise CopilotGroundingError("Report changed the frozen fraud probability")
 
     action_text = " ".join(
         item.action.lower() for item in report.recommended_actions
@@ -408,15 +442,20 @@ class CopilotService:
         provider: InvestigationLLMProvider | None,
         *,
         fallback_reason: str | None = None,
+        fallback_category: CopilotFailureCategory | None = None,
     ) -> None:
         self.provider = provider
         self.fallback_reason = fallback_reason
+        self.fallback_category = fallback_category
 
     def investigate(
         self,
         context: SanitizedInvestigationContext,
     ) -> CopilotInvestigationResponse:
+        started_at: float | None = None
+        failure_category: CopilotFailureCategory | None = None
         if self.provider is not None:
+            started_at = time.perf_counter()
             try:
                 raw_report: Any = self.provider.generate(context)
                 report = InvestigationReport.model_validate(raw_report).model_copy(
@@ -430,13 +469,33 @@ class CopilotService:
                     ai_available=True,
                     model=self.provider.model,
                     relationship_context=context.relationship_context,
+                    execution=CopilotExecutionMetadata(
+                        generated_by="real_provider",
+                        provider_attempted=True,
+                        provider_succeeded=True,
+                        generation_latency_ms=max(
+                            0, round((time.perf_counter() - started_at) * 1000)
+                        ),
+                    ),
                 )
-            except (CopilotProviderError, CopilotGroundingError, ValidationError, ValueError):
-                fallback_reason = "Provider unavailable or returned an invalid grounded report"
+            except (CopilotProviderTimeoutError, TimeoutError):
+                fallback_reason = "LLM provider timed out"
+                failure_category = "provider_timeout"
+            except CopilotGroundingError:
+                fallback_reason = "LLM provider output failed grounding validation"
+                failure_category = "grounding_rejected"
+            except (CopilotProviderInvalidOutputError, ValidationError, ValueError):
+                fallback_reason = "LLM provider returned invalid structured output"
+                failure_category = "invalid_output"
+            except CopilotProviderUnavailableError:
+                fallback_reason = "LLM provider request failed"
+                failure_category = "provider_error"
             except Exception:
                 fallback_reason = "Provider failed unexpectedly"
+                failure_category = "unexpected_error"
         else:
             fallback_reason = self.fallback_reason or "LLM is disabled"
+            failure_category = self.fallback_category or "disabled"
 
         report = _fallback_report(context)
         validate_report_grounding(report, context)
@@ -447,22 +506,49 @@ class CopilotService:
             ai_available=False,
             fallback_reason=fallback_reason,
             relationship_context=context.relationship_context,
+            execution=CopilotExecutionMetadata(
+                generated_by="deterministic_fallback",
+                provider_attempted=self.provider is not None,
+                provider_succeeded=False,
+                generation_latency_ms=(
+                    max(0, round((time.perf_counter() - started_at) * 1000))
+                    if started_at is not None
+                    else None
+                ),
+                failure_category=failure_category,
+            ),
         )
 
 
 def create_copilot_service(settings: Settings) -> CopilotService:
     if not settings.llm_enabled:
-        return CopilotService(None, fallback_reason="LLM is disabled by configuration")
+        return CopilotService(
+            None,
+            fallback_reason="LLM is disabled by configuration",
+            fallback_category="disabled",
+        )
     if settings.llm_provider != "openai":
-        return CopilotService(None, fallback_reason="Configured LLM provider is unsupported")
+        return CopilotService(
+            None,
+            fallback_reason="Configured LLM provider is unsupported",
+            fallback_category="unsupported_provider",
+        )
     if not settings.llm_api_key:
-        return CopilotService(None, fallback_reason="OpenAI API key is not configured")
+        return CopilotService(
+            None,
+            fallback_reason="OpenAI API key is not configured",
+            fallback_category="missing_credentials",
+        )
     try:
         provider = OpenAIInvestigationProvider(
             api_key=settings.llm_api_key,
             model=settings.llm_model,
             timeout_seconds=settings.llm_timeout_seconds,
         )
-    except CopilotProviderError:
-        return CopilotService(None, fallback_reason="OpenAI provider is unavailable")
+    except CopilotProviderUnavailableError:
+        return CopilotService(
+            None,
+            fallback_reason="OpenAI provider is unavailable",
+            fallback_category="provider_unavailable",
+        )
     return CopilotService(provider)

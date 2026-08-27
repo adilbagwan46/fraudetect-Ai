@@ -159,9 +159,13 @@ def system_readiness(
         ),
     ]
 
-    if settings.llm_enabled and settings.llm_provider == "openai" and settings.llm_api_key:
+    provider_configured = settings.llm_provider == "openai" and bool(settings.llm_api_key)
+    if settings.llm_enabled and provider_configured:
         copilot_mode = "real_llm_configured"
-        copilot_message = "LLM provider is configured; deterministic fallback remains available."
+        copilot_message = (
+            "LLM provider is configured; external availability was not checked and "
+            "deterministic fallback remains available."
+        )
     elif settings.llm_enabled:
         copilot_mode = "deterministic_fallback"
         copilot_message = "LLM provider is unavailable; deterministic fallback is active."
@@ -176,6 +180,13 @@ def system_readiness(
             version=settings.llm_model if copilot_mode == "real_llm_configured" else None,
             mode=copilot_mode,
             fallback_available=True,
+            provider_enabled=settings.llm_enabled,
+            provider_configured=provider_configured,
+            external_availability=(
+                "not_checked"
+                if settings.llm_enabled and provider_configured
+                else "not_applicable"
+            ),
             message=copilot_message,
         )
     )
