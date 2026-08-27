@@ -15,6 +15,7 @@ class Settings:
     model_artifact_root: Path = Path("artifacts/models")
     behavioral_history_db: Path = Path("artifacts/behavioral/history.sqlite")
     relationship_history_db: Path = Path("artifacts/relationship/history.sqlite")
+    case_database: Path = Path("artifacts/cases/cases.sqlite")
     llm_enabled: bool = False
     llm_provider: str = "openai"
     llm_model: str = "gpt-5.6"
@@ -73,6 +74,9 @@ def get_settings() -> Settings:
                 "FRAUDETECT_RELATIONSHIP_HISTORY_DB",
                 "artifacts/relationship/history.sqlite",
             )
+        ),
+        case_database=Path(
+            os.getenv("FRAUDETECT_CASE_DATABASE", "artifacts/cases/cases.sqlite")
         ),
         llm_enabled=_environment_bool("FRAUDETECT_LLM_ENABLED", False),
         llm_provider=os.getenv("FRAUDETECT_LLM_PROVIDER", "openai").strip().lower(),

@@ -1,6 +1,6 @@
 PYTHON ?= python3.12
 
-.PHONY: install install-llm api test lint demo-data prepare-data train-models reference-profile behavior-history relationship-history frontend-install frontend-dev
+.PHONY: install install-llm api test lint demo-data demo-cases prepare-data train-models reference-profile behavior-history relationship-history frontend-install frontend-dev
 
 install:
 	$(PYTHON) -m venv .venv
@@ -20,6 +20,9 @@ lint:
 
 demo-data:
 	.venv/bin/python scripts/generate_demo_data.py
+
+demo-cases:
+	.venv/bin/python scripts/seed_demo_cases.py
 
 prepare-data:
 	.venv/bin/python scripts/prepare_data.py --input data/raw/paysim.csv

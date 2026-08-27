@@ -8,15 +8,15 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 5 Relationship Intelligence is implemented: referenced investigations add deterministic, strictly prior origin-destination history and aggregate network context from an ignored label-free SQLite index. The Phase 4 positive-selection Copilot may interpret only these approved aggregates and typed evidence.
+Phase 6 Analyst Investigation Workflow is implemented: analysts can create immutable identifier-free cases, prioritize and filter a durable local queue, inspect all five intelligence layers, request a grounded Copilot brief, and record controlled human dispositions. The workflow is documented in [docs/analyst-workflow.md](docs/analyst-workflow.md).
 
 The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
 ```text
-Transaction -> ML risk probability -> behavioral + graph evidence
-            -> evidence-grounded AI investigation -> human decision
+Transaction -> frozen ML probability -> deterministic behavior + relationship evidence
+            -> immutable case -> evidence-grounded AI brief -> human workflow decision
 ```
 
 - **ML risk engine:** owns measurable fraud prediction.
@@ -126,6 +126,10 @@ npm install
 npm run dev
 ```
 
+The development server proxies `/api` to `http://127.0.0.1:8000`. Set `VITE_API_BASE_URL` at build time only when the deployed API is hosted separately.
+
+To populate a self-contained local showcase queue without copying PaySim data, run `make demo-cases`, then launch the API with the generated paths printed by the command. The generated case and synthetic history databases live under ignored `artifacts/demo/`; use `scripts/seed_demo_cases.py --force` only when you intend to replace them.
+
 ## Environment variables
 
 See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires `FRAUDETECT_LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`; no API key is needed for prediction, evidence, behavior, or fallback reports. Provider secrets are never sent to the frontend.
@@ -138,7 +142,7 @@ See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mo
 cd frontend && npm run build
 ```
 
-Phase 1 tests cover invalid source schemas, normalized fields, enrichment reproducibility and label independence, feature invariants, chronological split isolation, API health, and missing-manifest fallback.
+Tests cover the data contract, frozen ML regression behavior, causal intelligence, Copilot grounding, case lifecycle and persistence, priority policy, status validation, and identifier/privacy boundaries.
 
 The Phase 2 baseline is restricted to `transaction_type`, `amount`, `origin_balance_before`, `hour_of_day`, `log_amount`, and `amount_to_origin_balance`. Labels, identifiers, post-event balances, balance-error fields, enrichment, absolute simulation day, and destination balance are rejected from the model matrix by construction.
 
@@ -167,6 +171,8 @@ The investigation endpoint accepts either the existing manual transaction fields
 
 `POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
 
+The Phase 6 case API adds `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_id}`, and `POST /api/v1/cases/{case_id}/copilot`. Case priority is a transparent workflow ordering separate from ML risk; analyst disposition is never treated as model ground truth. Case storage contains only a positively selected immutable snapshot and minimal workflow metadata.
+
 ## Limitations
 
 - PaySim is synthetic and cannot establish real merchant performance.
@@ -174,10 +180,11 @@ The investigation endpoint accepts either the existing manual transaction fields
 - The local deterministic fallback is not an LLM, and real-provider quality depends on external model access and configuration.
 - Batch CSV preparation is appropriate for the buildathon but not production streaming scale.
 - Recommendations are simulated and never execute payment actions.
+- Local SQLite case storage has no production authentication, authorization, tenancy, retention, or distributed audit controls.
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Broader analyst workflow remains separate future work and is not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 7 verification work is not started automatically.
 
 ## License
 

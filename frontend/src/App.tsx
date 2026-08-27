@@ -1,250 +1,63 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type DatasetStatus = {
-  status: "ready" | "not_prepared";
-  rows: number | null;
-  source_kind: string | null;
-  message: string;
-};
+type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
+type CaseStatus = "OPEN" | "IN_REVIEW" | "ESCALATED" | "CLEARED" | "CLOSED";
+type CasePriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+type Disposition = "NONE" | "CLEARED" | "SUSPICIOUS" | "ESCALATED";
+type Evidence = { evidence_id: string; title: string; severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO"; category: string; facts: Record<string, unknown> };
+type Behavior = { history_available: boolean; availability_explanation: string; prior_transaction_count: number; prior_total_amount: number; prior_amount: { average: number; median: number; maximum: number } | null; current_amount_context: { amount_vs_prior_average: number | null; prior_empirical_percentile: number; exceeds_prior_maximum: boolean } | null; recent_activity: { steps_since_previous_transaction: number | null }; transaction_type_context: { is_new_transaction_type_for_origin: boolean } };
+type Relationship = { context_available: boolean; history_available: boolean; availability_explanation: string; relationship_seen_before: boolean | null; prior_interaction_count: number; prior_total_amount: number; prior_amount: { average: number; median: number; maximum: number } | null; current_amount_context: { amount_vs_prior_average: number | null; prior_empirical_percentile: number; exceeds_prior_relationship_maximum: boolean } | null; steps_since_previous_interaction: number | null; baseline_is_limited: boolean; origin_network: { prior_unique_counterparty_count: number; current_destination_is_new: boolean | null }; destination_network: { prior_unique_origin_count: number; current_origin_is_new_for_destination: boolean | null } };
+type CaseSummary = { case_id: string; status: CaseStatus; priority: CasePriority; created_at: string; updated_at: string; source_type: "REFERENCE" | "MANUAL"; transaction_reference_available: boolean; model_version: string; fraud_probability: number; risk_level: RiskLevel; operating_mode: "BALANCED"; evidence_summary: { total_count: number; highest_severity: string | null }; analyst_decision: { disposition: Disposition; note: string | null; disposition_at: string | null; is_model_ground_truth: false } };
+type Copilot = { provider: string; mode: "real_llm" | "deterministic_fallback"; ai_available: boolean; model: string | null; fallback_reason: string | null; report: { summary: string; risk_assessment: { level: RiskLevel; assessment: string }; key_signals: { signal: string; importance: string; explanation: string; evidence_ids: string[] }[]; behavioral_analysis: { summary: string; history_limitation: string | null }; relationship_analysis: { summary: string; history_limitation: string | null }; uncertainties: string[]; recommended_actions: { action: string; reason: string }[]; disclaimer: string } };
+type CaseDetail = { case: CaseSummary; intelligence_snapshot: { transaction: { transaction_type: string; amount: number; origin_balance_before: number; hour_of_day: number }; model_output: { fraud_probability: number; risk_score: number; risk_level: RiskLevel; fraud_prediction: boolean; classification_threshold: number; operating_mode: "BALANCED"; recommended_simulated_action: string }; evidence: Evidence[]; behavioral_context: Behavior; relationship_context: Relationship }; investigation_limitations: string[]; copilot: Copilot | null; status_history: { occurred_at: string; previous_status: CaseStatus | null; new_status: CaseStatus; disposition: Disposition; note_recorded: boolean }[]; snapshot_is_immutable: true };
+type CaseList = { items: CaseSummary[]; total: number; limit: number; offset: number };
+type ApiError = { detail?: string | { msg?: string }[] };
 
-type ReportSignal = {
-  signal: string;
-  importance: "HIGH" | "MEDIUM" | "LOW" | "INFO";
-  explanation: string;
-  evidence_ids: string[];
-};
+const apiBase = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+const nextStates: Record<CaseStatus, CaseStatus[]> = { OPEN: ["IN_REVIEW"], IN_REVIEW: ["ESCALATED", "CLEARED"], ESCALATED: ["CLOSED"], CLEARED: ["CLOSED"], CLOSED: [] };
 
-type CopilotResponse = {
-  provider: string;
-  mode: "real_llm" | "deterministic_fallback";
-  ai_available: boolean;
-  model: string | null;
-  fallback_reason: string | null;
-  relationship_context: {
-    context_available: boolean;
-    history_available: boolean;
-    relationship_seen_before: boolean | null;
-    relationship_first_seen: boolean | null;
-    prior_interaction_count: number;
-    prior_total_amount: number;
-    prior_amount: { average: number; median: number; maximum: number } | null;
-    current_amount_context: {
-      amount_vs_prior_average: number | null;
-      amount_vs_prior_median: number | null;
-      amount_vs_prior_maximum: number | null;
-      prior_empirical_percentile: number;
-      exceeds_prior_relationship_maximum: boolean;
-    } | null;
-    steps_since_previous_interaction: number | null;
-    baseline_is_limited: boolean;
-    origin_network: {
-      prior_unique_counterparty_count: number;
-      prior_transaction_count: number;
-      current_destination_is_new: boolean | null;
-    };
-    destination_network: {
-      prior_unique_origin_count: number;
-      prior_transaction_count: number;
-      current_origin_is_new_for_destination: boolean | null;
-    };
-  };
-  report: {
-    summary: string;
-    risk_assessment: { level: "LOW" | "MEDIUM" | "HIGH"; assessment: string };
-    key_signals: ReportSignal[];
-    behavioral_analysis: { summary: string; history_limitation: string | null };
-    relationship_analysis: {
-      summary: string;
-      history_limitation: string | null;
-      evidence_ids: string[];
-    };
-    uncertainties: string[];
-    recommended_actions: { action: string; reason: string }[];
-    analyst_note: string;
-    disclaimer: string;
-  };
-};
-
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+function formatAmount(value: number | null | undefined) { return value == null ? "—" : value.toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+function readable(value: string) { return value.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase()); }
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init); const payload = await response.json() as T | ApiError;
+  if (!response.ok) { const detail = (payload as ApiError).detail; const message = typeof detail === "string" ? detail : Array.isArray(detail) ? detail[0]?.msg : undefined; throw new Error(message ?? `Request failed (${response.status})`); }
+  return payload as T;
+}
 
 function App() {
-  const [dataset, setDataset] = useState<DatasetStatus | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [transactionReference, setTransactionReference] = useState("TX-000000001");
-  const [copilot, setCopilot] = useState<CopilotResponse | null>(null);
-  const [copilotError, setCopilotError] = useState<string | null>(null);
-  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [cases, setCases] = useState<CaseSummary[]>([]); const [total, setTotal] = useState(0); const [selected, setSelected] = useState<CaseDetail | null>(null);
+  const [reference, setReference] = useState("TX-000000001"); const [statusFilter, setStatusFilter] = useState(""); const [riskFilter, setRiskFilter] = useState(""); const [priorityFilter, setPriorityFilter] = useState("");
+  const [note, setNote] = useState(""); const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
+  const query = useMemo(() => { const params = new URLSearchParams({ limit: "50", offset: "0" }); if (statusFilter) params.set("status", statusFilter); if (riskFilter) params.set("risk_level", riskFilter); if (priorityFilter) params.set("priority", priorityFilter); return params.toString(); }, [statusFilter, riskFilter, priorityFilter]);
+  const loadDetail = useCallback(async (caseId: string) => { setBusy("detail"); setError(null); try { setSelected(await requestJson<CaseDetail>(`${apiBase}/cases/${caseId}`)); } catch (caught) { setError(caught instanceof Error ? caught.message : "Case could not be loaded"); } finally { setBusy(null); } }, []);
+  const loadQueue = useCallback(async (preferredCaseId?: string) => { setError(null); try { const payload = await requestJson<CaseList>(`${apiBase}/cases?${query}`); setCases(payload.items); setTotal(payload.total); const nextId = preferredCaseId ?? selected?.case.case_id ?? payload.items[0]?.case_id; if (nextId) await loadDetail(nextId); else setSelected(null); } catch (caught) { setError(caught instanceof Error ? caught.message : "Case queue unavailable"); } }, [loadDetail, query, selected?.case.case_id]);
+  useEffect(() => { void loadQueue(); }, [query]); // queue changes only when filter query changes
 
-  useEffect(() => {
-    fetch(`${apiBase}/dataset/status`)
-      .then((response) => {
-        if (!response.ok) throw new Error("API request failed");
-        return response.json() as Promise<DatasetStatus>;
-      })
-      .then(setDataset)
-      .catch(() => setOffline(true));
-  }, []);
+  async function createCase(event: React.FormEvent) { event.preventDefault(); setBusy("create"); setError(null); try { const detail = await requestJson<CaseDetail>(`${apiBase}/cases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transaction_reference: reference.trim() }) }); setSelected(detail); await loadQueue(detail.case.case_id); } catch (caught) { setError(caught instanceof Error ? caught.message : "Case could not be created"); } finally { setBusy(null); } }
+  async function updateCase(status?: CaseStatus) { if (!selected) return; if (!status && !note.trim()) { setError("Enter an analyst note before saving."); return; } setBusy(status ?? "note"); setError(null); try { const body: { status?: CaseStatus; analyst_note?: string } = {}; if (status) body.status = status; if (note.trim()) body.analyst_note = note.trim(); const detail = await requestJson<CaseDetail>(`${apiBase}/cases/${selected.case.case_id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); setSelected(detail); setNote(""); await loadQueue(detail.case.case_id); } catch (caught) { setError(caught instanceof Error ? caught.message : "Case could not be updated"); } finally { setBusy(null); } }
+  async function generateCopilot() { if (!selected) return; setBusy("copilot"); setError(null); try { await requestJson<Copilot>(`${apiBase}/cases/${selected.case.case_id}/copilot`, { method: "POST" }); await loadDetail(selected.case.case_id); } catch (caught) { setError(caught instanceof Error ? caught.message : "Copilot unavailable"); } finally { setBusy(null); } }
+  const snapshot = selected?.intelligence_snapshot;
+  const caseIsClosed = selected?.case.status === "CLOSED";
 
-  async function runCopilot(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setCopilotLoading(true);
-    setCopilotError(null);
-    try {
-      const response = await fetch(`${apiBase}/risk/investigate/copilot`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction_reference: transactionReference.trim() }),
-      });
-      const payload = await response.json() as CopilotResponse | { detail?: string };
-      if (!response.ok) {
-        throw new Error("detail" in payload && payload.detail ? payload.detail : "Investigation failed");
-      }
-      setCopilot(payload as CopilotResponse);
-    } catch (error) {
-      setCopilot(null);
-      setCopilotError(error instanceof Error ? error.message : "Investigation failed");
-    } finally {
-      setCopilotLoading(false);
-    }
-  }
-
-  return (
-    <main className="shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Fraudetect AI home">
-          <span className="brand-mark">F</span>
-          <span>FRAUDETECT <b>AI</b></span>
-        </a>
-        <div className="phase"><span /> Relationship Intelligence · Phase 5</div>
-      </header>
-
-      <section className="hero">
-        <p className="eyebrow">PAYMENT RISK INTELLIGENCE</p>
-        <h1>Investigate the evidence<br />around every transaction.</h1>
-        <p className="lede">
-          ML scores risk. Deterministic intelligence explains history and relationships. Humans retain control.
-        </p>
-        <div className="status-card">
-          <div>
-            <span className="status-label">DATA PIPELINE</span>
-            <strong>{offline ? "API OFFLINE" : dataset?.status === "ready" ? "READY" : "AWAITING DATA"}</strong>
-          </div>
-          <p>{offline ? "Start the FastAPI service to check pipeline status." : dataset?.message ?? "Checking validated dataset status…"}</p>
-          {dataset?.rows ? <span className="row-count">{dataset.rows.toLocaleString()} rows prepared</span> : null}
-        </div>
-      </section>
-
-      <section className="architecture" aria-label="Product intelligence layers">
-        <article><span>01</span><h2>ML risk</h2><p>Frozen probability, classification threshold, and simulated policy.</p></article>
-        <article><span>02</span><h2>Evidence</h2><p>Typed, deterministic, and auditable transaction signals.</p></article>
-        <article><span>03</span><h2>Behavior</h2><p>Strictly prior origin activity and amount deviation.</p></article>
-        <article><span>04</span><h2>Relationships</h2><p>Causal pair history and aggregate network novelty.</p></article>
-        <article><span>05</span><h2>AI analysis</h2><p>Allowlisted context, explicit uncertainty, and advisory steps.</p></article>
-      </section>
-
-      <section className="copilot-workspace" aria-labelledby="copilot-title">
-        <div className="copilot-intro">
-          <p className="eyebrow">EVIDENCE-GROUNDED REVIEW</p>
-          <h2 id="copilot-title">AI Investigation Copilot</h2>
-          <p>Generate a structured analyst brief from an internal demo transaction reference. Raw identities and history never enter the report.</p>
-          <form onSubmit={runCopilot} className="reference-form">
-            <label htmlFor="transaction-reference">Transaction reference</label>
-            <div>
-              <input
-                id="transaction-reference"
-                value={transactionReference}
-                onChange={(event) => setTransactionReference(event.target.value)}
-                pattern="[A-Za-z0-9][A-Za-z0-9._:-]*"
-                maxLength={64}
-                required
-              />
-              <button disabled={copilotLoading} type="submit">
-                {copilotLoading ? "Investigating…" : "Run Copilot"}
-              </button>
-            </div>
-          </form>
-          {copilotError ? <p className="copilot-error" role="alert">{copilotError}</p> : null}
-        </div>
-
-        <div className="report-panel" aria-live="polite">
-          {!copilot ? (
-            <div className="report-empty">
-              <span>READY</span>
-              <p>The deterministic demo fallback works without an API key. Real LLM mode is labeled when enabled server-side.</p>
-            </div>
-          ) : (
-            <>
-              <div className="report-heading">
-                <div>
-                  <span className={`risk-chip risk-${copilot.report.risk_assessment.level.toLowerCase()}`}>
-                    {copilot.report.risk_assessment.level} RISK
-                  </span>
-                  <h3>Investigation Summary</h3>
-                </div>
-                <span className={`mode-chip ${copilot.ai_available ? "mode-live" : ""}`}>
-                  {copilot.mode === "real_llm" ? "Real LLM" : "Demo Fallback"}
-                </span>
-              </div>
-              <p className="report-summary">{copilot.report.summary}</p>
-
-              <div className="report-section">
-                <h4>Deterministic Evidence</h4>
-                <div className="signal-list">
-                  {copilot.report.key_signals.map((signal) => (
-                    <article key={`${signal.signal}-${signal.evidence_ids.join("-")}`}>
-                      <span>{signal.importance}</span>
-                      <div><strong>{signal.signal}</strong><p>{signal.explanation}</p></div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-
-              <div className="report-section relationship-section">
-                <div className="relationship-heading">
-                  <h4>Relationship Intelligence</h4>
-                  <span>{!copilot.relationship_context.context_available
-                    ? "Unavailable"
-                    : copilot.relationship_context.relationship_seen_before
-                      ? "Previously observed"
-                      : "New relationship"}</span>
-                </div>
-                <div className="relationship-metrics">
-                  <div><span>Prior interactions</span><strong>{copilot.relationship_context.prior_interaction_count}</strong></div>
-                  <div><span>Prior average</span><strong>{copilot.relationship_context.prior_amount ? copilot.relationship_context.prior_amount.average.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</strong></div>
-                  <div><span>Prior maximum</span><strong>{copilot.relationship_context.prior_amount ? copilot.relationship_context.prior_amount.maximum.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</strong></div>
-                  <div><span>Vs prior average</span><strong>{copilot.relationship_context.current_amount_context?.amount_vs_prior_average != null ? `${copilot.relationship_context.current_amount_context.amount_vs_prior_average.toFixed(2)}×` : "—"}</strong></div>
-                  <div><span>Origin counterparties</span><strong>{copilot.relationship_context.context_available ? copilot.relationship_context.origin_network.prior_unique_counterparty_count : "—"}</strong></div>
-                  <div><span>Destination origins</span><strong>{copilot.relationship_context.context_available ? copilot.relationship_context.destination_network.prior_unique_origin_count : "—"}</strong></div>
-                </div>
-                <p>{copilot.report.relationship_analysis.summary}</p>
-                {copilot.report.relationship_analysis.history_limitation ? <p className="limitation">{copilot.report.relationship_analysis.history_limitation}</p> : null}
-              </div>
-
-              <div className="report-grid">
-                <div className="report-section">
-                  <h4>Behavioral Analysis</h4>
-                  <p>{copilot.report.behavioral_analysis.summary}</p>
-                  {copilot.report.behavioral_analysis.history_limitation ? <p className="limitation">{copilot.report.behavioral_analysis.history_limitation}</p> : null}
-                </div>
-                <div className="report-section">
-                  <h4>Limitations</h4>
-                  <ul>{copilot.report.uncertainties.map((item) => <li key={item}>{item}</li>)}</ul>
-                </div>
-              </div>
-
-              <div className="report-section actions">
-                <h4>Recommended Actions</h4>
-                <ol>{copilot.report.recommended_actions.map((item) => <li key={item.action}><strong>{item.action}</strong><span>{item.reason}</span></li>)}</ol>
-              </div>
-              <p className="report-disclaimer">{copilot.report.disclaimer}</p>
-            </>
-          )}
-        </div>
-      </section>
-
-      <footer>Demo recommendations only · No autonomous payment actions</footer>
-    </main>
-  );
+  return <main className="app-shell">
+    <header className="topbar"><a className="brand" href="/" aria-label="Fraudetect AI analyst workspace"><span className="brand-mark">F</span><span>FRAUDETECT <b>AI</b></span></a><div className="phase"><span /> Analyst workflow · Phase 6</div></header>
+    <section className="workspace-head"><div><p className="eyebrow">INVESTIGATION OPERATIONS</p><h1>Case review queue</h1><p>Model risk, deterministic evidence, and human decisions remain separate and auditable.</p></div><form className="create-form" onSubmit={createCase}><label htmlFor="reference">Create case from internal reference</label><div><input id="reference" value={reference} onChange={(event) => setReference(event.target.value)} required maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9._:-]*"/><button disabled={busy === "create"}>{busy === "create" ? "Creating…" : "Create case"}</button></div><small>The internal reference is resolved server-side and is never stored in the case.</small></form></section>
+    {error ? <div className="error-banner" role="alert"><strong>Workflow notice</strong><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss">×</button></div> : null}
+    <section className="analyst-grid"><aside className="queue-panel"><div className="panel-title"><div><span>CASE QUEUE</span><strong>{total} cases</strong></div><button onClick={() => void loadQueue()}>Refresh</button></div><div className="filters"><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All</option>{Object.keys(nextStates).map((value) => <option key={value}>{value}</option>)}</select></label><label>ML risk<select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}><option value="">All</option>{["HIGH", "MEDIUM", "LOW"].map((value) => <option key={value}>{value}</option>)}</select></label><label>Priority<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="">All</option>{["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => <option key={value}>{value}</option>)}</select></label></div><div className="case-list">{!cases.length ? <div className="empty-state"><strong>No cases found</strong><p>Create a case or clear the active filters.</p></div> : cases.map((item) => <button key={item.case_id} className={`case-row ${selected?.case.case_id === item.case_id ? "active" : ""}`} onClick={() => void loadDetail(item.case_id)}><div><span className={`priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span><span className="case-id">{item.case_id}</span></div><strong>{item.risk_level} ML risk · {(item.fraud_probability * 100).toFixed(1)}%</strong><div><span>{readable(item.status)}</span><span>{item.evidence_summary.total_count} signals</span><time>{new Date(item.created_at).toLocaleString()}</time></div></button>)}</div></aside>
+      <section className="detail-panel" aria-live="polite">{!selected ? <div className="detail-empty"><span>{busy === "detail" ? "LOADING" : "NO CASE SELECTED"}</span><h2>Choose an investigation</h2><p>Case snapshots preserve the evidence known at creation time.</p></div> : <>
+        <header className="case-header"><div><p className="eyebrow">IMMUTABLE INTELLIGENCE SNAPSHOT</p><h2>{selected.case.case_id}</h2><p>Created {new Date(selected.case.created_at).toLocaleString()} · {selected.case.source_type.toLowerCase()} input</p></div><div className="case-badges"><span className={`priority priority-${selected.case.priority.toLowerCase()}`}>{selected.case.priority} PRIORITY</span><span>{readable(selected.case.status)}</span></div></header>
+        <div className="separation-callout"><strong>Workflow priority ≠ model risk</strong><span>Priority orders analyst work. The frozen model output below is unchanged; analyst disposition is not model ground truth.</span></div>
+        <section className="risk-overview section-card"><div className="score-ring"><strong>{snapshot?.model_output.risk_score.toFixed(1)}</strong><span>RISK SCORE</span></div><div><p className="section-label">FROZEN ML ASSESSMENT</p><h3 className={`risk-${selected.case.risk_level.toLowerCase()}`}>{selected.case.risk_level} RISK</h3><p>Fraud probability {(selected.case.fraud_probability * 100).toFixed(2)}% · prediction {snapshot?.model_output.fraud_prediction ? "positive" : "negative"}</p></div><dl><div><dt>Threshold</dt><dd>{((snapshot?.model_output.classification_threshold ?? 0) * 100).toFixed(2)}%</dd></div><div><dt>Operating mode</dt><dd>{selected.case.operating_mode}</dd></div><div><dt>Model</dt><dd>{selected.case.model_version}</dd></div><div><dt>Simulated action</dt><dd>{readable(snapshot?.model_output.recommended_simulated_action ?? "")}</dd></div></dl></section>
+        <section className="section-card"><div className="section-heading"><div><p className="section-label">DETERMINISTIC EVIDENCE</p><h3>{selected.case.evidence_summary.total_count} grounded signals</h3></div><span>Not causal claims</span></div><div className="evidence-grid">{snapshot?.evidence.map((item) => <article key={item.evidence_id} className={`evidence evidence-${item.severity.toLowerCase()}`}><div><span>{item.severity}</span><code>{item.evidence_id}</code></div><h4>{item.title}</h4><p>{Object.entries(item.facts).slice(0, 3).map(([key, value]) => `${readable(key)}: ${String(value)}`).join(" · ")}</p></article>)}</div></section>
+        <div className="intelligence-grid"><IntelligenceCard title="BEHAVIORAL INTELLIGENCE" heading={snapshot?.behavioral_context.history_available ? "Prior history available" : "History unavailable"} values={[["Prior transactions", snapshot?.behavioral_context.prior_transaction_count ?? 0], ["Prior average", formatAmount(snapshot?.behavioral_context.prior_amount?.average)], ["Amount ratio", `${snapshot?.behavioral_context.current_amount_context?.amount_vs_prior_average?.toFixed(2) ?? "—"}×`], ["Percentile", snapshot?.behavioral_context.current_amount_context ? `${(snapshot.behavioral_context.current_amount_context.prior_empirical_percentile * 100).toFixed(0)}%` : "—"]]} note={snapshot?.behavioral_context.availability_explanation ?? ""}/><IntelligenceCard title="RELATIONSHIP INTELLIGENCE" heading={snapshot?.relationship_context.relationship_seen_before ? "Previously observed pair" : snapshot?.relationship_context.context_available ? "First observed pair" : "Context unavailable"} values={[["Prior interactions", snapshot?.relationship_context.prior_interaction_count ?? 0], ["Pair average", formatAmount(snapshot?.relationship_context.prior_amount?.average)], ["Origin network", snapshot?.relationship_context.origin_network.prior_unique_counterparty_count ?? 0], ["Destination network", snapshot?.relationship_context.destination_network.prior_unique_origin_count ?? 0]]} note={snapshot?.relationship_context.availability_explanation ?? ""}/></div>
+        <section className="section-card copilot-card"><div className="section-heading"><div><p className="section-label">LLM INVESTIGATION COPILOT</p><h3>{selected.copilot ? "Grounded analyst brief" : "Advisory analysis not generated"}</h3></div><button onClick={() => void generateCopilot()} disabled={busy === "copilot" || caseIsClosed}>{caseIsClosed ? "Case closed" : busy === "copilot" ? "Generating…" : selected.copilot ? "Regenerate brief" : "Generate brief"}</button></div>{!selected.copilot ? <p className="context-note">The Copilot receives only the stored identifier-free snapshot. Deterministic fallback works without an API key.</p> : <CopilotReport copilot={selected.copilot}/>}</section>
+        <section className="section-card decision-card"><div className="section-heading"><div><p className="section-label">HUMAN DECISION</p><h3>{readable(selected.case.analyst_decision.disposition)}</h3></div><span>Analyst-owned · never fed back as truth</span></div><label htmlFor="note">Analyst note<textarea id="note" value={note} onChange={(event) => setNote(event.target.value)} disabled={caseIsClosed} maxLength={2000} placeholder={caseIsClosed ? "Closed cases are immutable." : "Record rationale, checks performed, or handoff context…"}/></label><div className="decision-actions"><button className="secondary" onClick={() => void updateCase()} disabled={caseIsClosed || !note.trim() || busy !== null}>Save note</button>{nextStates[selected.case.status].map((state) => <button key={state} className={state === "ESCALATED" ? "danger" : "primary"} onClick={() => void updateCase(state)} disabled={busy !== null}>{busy === state ? "Updating…" : readable(state)}</button>)}</div>{selected.case.analyst_decision.note ? <blockquote><strong>Latest analyst note</strong>{selected.case.analyst_decision.note}</blockquote> : null}<div className="timeline"><p className="section-label">STATUS HISTORY</p>{selected.status_history.map((item, index) => <div key={`${item.occurred_at}-${index}`}><span/><time>{new Date(item.occurred_at).toLocaleString()}</time><strong>{readable(item.new_status)}</strong><small>{readable(item.disposition)}{item.note_recorded ? " · note recorded" : ""}</small></div>)}</div></section>
+        <section className="limitations"><strong>Investigation limitations</strong><ul>{selected.investigation_limitations.map((item) => <li key={item}>{item}</li>)}</ul></section>
+      </>}</section></section><footer>Local demonstration · no autonomous payment actions · identifiers excluded from case storage</footer>
+  </main>;
 }
+
+function IntelligenceCard({ title, heading, values, note }: { title: string; heading: string; values: [string, string | number][]; note: string }) { return <section className="section-card compact"><p className="section-label">{title}</p><h3>{heading}</h3><div className="metrics">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><p className="context-note">{note}</p></section>; }
+function CopilotReport({ copilot }: { copilot: Copilot }) { return <div className="copilot-report"><div className="mode-line"><span>{copilot.mode === "real_llm" ? "REAL LLM" : "DETERMINISTIC FALLBACK"}</span><span>{copilot.provider}{copilot.model ? ` · ${copilot.model}` : ""}</span></div><p className="report-summary">{copilot.report.summary}</p><div className="report-columns"><div><h4>Key signals</h4>{copilot.report.key_signals.map((signal) => <article key={`${signal.signal}-${signal.evidence_ids.join("-")}`}><strong>{signal.signal}</strong><p>{signal.explanation}</p><code>{signal.evidence_ids.join(" · ")}</code></article>)}</div><div><h4>Recommended actions</h4><ol>{copilot.report.recommended_actions.map((item) => <li key={item.action}><strong>{item.action}</strong><span>{item.reason}</span></li>)}</ol><h4>Uncertainties</h4><ul>{copilot.report.uncertainties.map((item) => <li key={item}>{item}</li>)}</ul></div></div><p className="disclaimer">{copilot.report.disclaimer}</p></div>; }
 
 export default App;

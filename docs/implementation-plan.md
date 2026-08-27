@@ -88,13 +88,16 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** referenced investigations return causal relationship and network context without IDs, labels, same-step data, future leakage, or any change to model output.
 
-## Phase 6 — Analyst frontend
+## Phase 6 — Analyst investigation workflow (complete)
 
-- Build risk overview, filterable transaction list, investigation workspace, local graph, and evaluation page.
-- Emphasize the investigation page, evidence timeline, risk semantics, and human decision controls.
-- Connect loading, empty, error, and LLM-unavailable states.
+- Add typed immutable cases backed by an ignored local SQLite repository.
+- Provide a prioritized, filterable, paginated queue and complete identifier-free case detail API.
+- Enforce controlled status transitions, notes, and simulated analyst dispositions without changing intelligence.
+- Integrate the Copilot using only the stored positive-selection context.
+- Build a focused React analyst workspace with ML, evidence, behavior, relationship, AI, limitations, and human-decision sections.
+- Add deterministic ignored showcase cases plus loading, empty, error, and fallback states.
 
-**Exit condition:** a five-minute end-to-end analyst demo works without developer tools.
+**Exit condition:** an analyst can create, prioritize, investigate, disposition, close, and reopen persisted case detail after restart without exposing identifiers or changing the frozen model.
 
 ## Phase 7 — Verification and documentation
 

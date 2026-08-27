@@ -15,19 +15,17 @@ from backend.app.schemas.risk import (
 )
 from backend.app.services.behavioral_service import (
     BehaviorHistoryUnavailableError,
-    SQLitePaySimHistoryProvider,
     TransactionReferenceNotFoundError,
 )
 from backend.app.services.copilot.context_builder import build_sanitized_context
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
+from backend.app.services.investigation_service import build_investigation
 from backend.app.services.relationship_service import (
     RelationshipHistoryUnavailableError,
     RelationshipTransactionNotFoundError,
-    SQLiteRelationshipHistoryProvider,
 )
 from backend.app.services.risk_service import (
     ModelUnavailableError,
-    investigate_risk,
     load_active_bundle,
     predict_risk,
 )
@@ -41,29 +39,6 @@ def get_copilot_service(settings: SettingsDependency) -> CopilotService:
 
 
 CopilotServiceDependency = Annotated[CopilotService, Depends(get_copilot_service)]
-
-
-def _build_investigation(
-    request: RiskInvestigationRequest,
-    settings: Settings,
-) -> tuple[InvestigationContext, str]:
-    bundle = load_active_bundle(settings.model_artifact_root)
-    if request.transaction_reference is None:
-        return investigate_risk(bundle, request.manual_transaction())
-
-    provider = SQLitePaySimHistoryProvider(settings.behavioral_history_db)
-    historical_transaction, behavioral_context = provider.context_for(
-        request.transaction_reference
-    )
-    relationship_context = SQLiteRelationshipHistoryProvider(
-        settings.relationship_history_db
-    ).context_for(request.transaction_reference)
-    return investigate_risk(
-        bundle,
-        historical_transaction.scoring_request(),
-        behavioral_context=behavioral_context,
-        relationship_context=relationship_context,
-    )
 
 
 @router.get("/model/status", response_model=ModelStatusResponse)
@@ -101,7 +76,7 @@ def risk_investigation(
     settings: SettingsDependency,
 ) -> InvestigationContext:
     try:
-        context, _ = _build_investigation(request, settings)
+        context, _ = build_investigation(request, settings)
         return context
     except TransactionReferenceNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -125,7 +100,7 @@ def risk_copilot_investigation(
     copilot: CopilotServiceDependency,
 ) -> CopilotInvestigationResponse:
     try:
-        context, action = _build_investigation(request, settings)
+        context, action = build_investigation(request, settings)
         sanitized = build_sanitized_context(context, action)
         return copilot.investigate(sanitized)
     except TransactionReferenceNotFoundError as error:
