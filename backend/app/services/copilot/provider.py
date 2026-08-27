@@ -5,6 +5,61 @@ from typing import Any, Protocol
 from backend.app.schemas.copilot import InvestigationReport, SanitizedInvestigationContext
 from backend.app.services.copilot.prompts import SYSTEM_PROMPT, build_context_prompt
 
+_GEMINI_SUPPORTED_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$id",
+        "$anchor",
+        "$defs",
+        "$ref",
+        "type",
+        "format",
+        "title",
+        "description",
+        "enum",
+        "items",
+        "prefixItems",
+        "minItems",
+        "maxItems",
+        "minimum",
+        "maximum",
+        "anyOf",
+        "oneOf",
+        "properties",
+        "additionalProperties",
+        "required",
+        "propertyOrdering",
+    }
+)
+_GEMINI_SCHEMA_MAP_KEYWORDS = frozenset({"$defs", "properties"})
+
+
+def _simplify_gemini_schema(value: Any) -> Any:
+    """Project JSON Schema onto the subset supported by Gemini structured output."""
+
+    if isinstance(value, list):
+        return [_simplify_gemini_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    simplified: dict[str, Any] = {}
+    for key, item in value.items():
+        if key not in _GEMINI_SUPPORTED_SCHEMA_KEYWORDS:
+            continue
+        if key in _GEMINI_SCHEMA_MAP_KEYWORDS:
+            simplified[key] = {
+                name: _simplify_gemini_schema(schema)
+                for name, schema in item.items()
+            }
+        else:
+            simplified[key] = _simplify_gemini_schema(item)
+    return simplified
+
+
+def gemini_investigation_report_schema() -> dict[str, Any]:
+    """Return Gemini's transport schema without weakening local report validation."""
+
+    return _simplify_gemini_schema(InvestigationReport.model_json_schema())
+
 
 class CopilotProviderError(RuntimeError):
     """Base class for controlled provider failures."""
@@ -127,7 +182,7 @@ class GeminiInvestigationProvider:
                 config={
                     "system_instruction": SYSTEM_PROMPT,
                     "response_mime_type": "application/json",
-                    "response_schema": InvestigationReport,
+                    "response_json_schema": gemini_investigation_report_schema(),
                 },
             )
         except self._timeout_errors as error:

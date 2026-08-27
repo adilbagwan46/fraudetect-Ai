@@ -89,6 +89,8 @@ GEMINI_API_KEY=<server-side secret>
 
 The model names remain configurable because provider access and supported model catalogs can vary.
 The Gemini default is the stable Flash model selected for low-latency structured analysis.
+`FRAUDETECT_LLM_TIMEOUT_SECONDS` defaults to a bounded 60 seconds and remains configurable for
+both providers; exceeding it still returns the labeled deterministic fallback.
 
 Install the optional provider dependency with:
 
@@ -192,6 +194,7 @@ ignored local `.env` file. Do not paste it into source code, frontend variables,
 FRAUDETECT_LLM_ENABLED=true
 FRAUDETECT_LLM_PROVIDER=gemini
 GEMINI_MODEL=gemini-3.7-flash
+FRAUDETECT_LLM_TIMEOUT_SECONDS=60
 GEMINI_API_KEY=<your local key>
 ```
 

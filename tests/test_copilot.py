@@ -33,6 +33,7 @@ from backend.app.services.copilot.provider import (
     CopilotProviderUnavailableError,
     GeminiInvestigationProvider,
     OpenAIInvestigationProvider,
+    gemini_investigation_report_schema,
 )
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
 from backend.app.services.evidence_service import build_investigation_context
@@ -314,8 +315,9 @@ def test_gemini_provider_uses_structured_output_and_only_sanitized_context() -> 
     assert captured["config"] == {
         "system_instruction": SYSTEM_PROMPT,
         "response_mime_type": "application/json",
-        "response_schema": InvestigationReport,
+        "response_json_schema": gemini_investigation_report_schema(),
     }
+    assert "response_schema" not in captured["config"]
     assert "<DATA_CONTEXT>" in captured["contents"]
     for forbidden in (
         "transaction_reference",
@@ -325,6 +327,62 @@ def test_gemini_provider_uses_structured_output_and_only_sanitized_context() -> 
         "raw_relationship_history",
     ):
         assert forbidden not in captured["contents"]
+
+
+def test_gemini_provider_passes_configured_timeout_to_sdk(monkeypatch) -> None:
+    genai = pytest.importorskip("google.genai")
+    captured: dict[str, Any] = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(models=SimpleNamespace())
+
+    monkeypatch.setattr(genai, "Client", fake_client)
+
+    GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=60,
+    )
+
+    assert captured["http_options"].timeout == 60_000
+
+
+def _schema_keywords(value: Any) -> set[str]:
+    if isinstance(value, list):
+        return set().union(*(_schema_keywords(item) for item in value), set())
+    if not isinstance(value, dict):
+        return set()
+    keywords = set(value)
+    return keywords.union(*(_schema_keywords(item) for item in value.values()), set())
+
+
+def test_gemini_schema_removes_unsupported_constraints_only_for_transport() -> None:
+    canonical = InvestigationReport.model_json_schema()
+    transport = gemini_investigation_report_schema()
+
+    canonical_keywords = _schema_keywords(canonical)
+    transport_keywords = _schema_keywords(transport)
+    assert {"minLength", "maxLength"}.issubset(canonical_keywords)
+    assert "minLength" not in transport_keywords
+    assert "maxLength" not in transport_keywords
+    assert "default" not in transport_keywords
+    assert transport["required"] == canonical["required"]
+    assert transport["properties"].keys() == canonical["properties"].keys()
+    assert transport["properties"]["key_signals"]["maxItems"] == 5
+
+
+def test_canonical_report_keeps_full_string_length_validation() -> None:
+    context = sanitized_context(behavioral=unavailable_behavioral_context())
+    valid = CopilotService(None).investigate(context).report.model_dump()
+
+    valid["summary"] = ""
+    with pytest.raises(ValidationError):
+        InvestigationReport.model_validate(valid)
+
+    valid["summary"] = "x" * 901
+    with pytest.raises(ValidationError):
+        InvestigationReport.model_validate(valid)
 
 
 def test_gemini_success_has_truthful_real_provider_execution_metadata() -> None:
@@ -384,8 +442,10 @@ def test_gemini_failures_use_labeled_fallback_without_exposing_details(
     assert response.provider == "deterministic_fallback"
     assert response.ai_available is False
     assert response.execution is not None
+    assert response.execution.generated_by == "deterministic_fallback"
     assert response.execution.provider_attempted is True
     assert response.execution.provider_succeeded is False
+    assert response.execution.generation_latency_ms is not None
     assert response.execution.failure_category == failure_category
     assert "private" not in (response.fallback_reason or "")
 
@@ -606,22 +666,33 @@ def test_gemini_key_alone_does_not_initialize_provider(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    ("provider_name", "provider_attribute", "settings"),
+    ("provider_name", "provider_attribute", "settings", "expected_timeout"),
     [
         (
             "openai",
             "OpenAIInvestigationProvider",
             Settings(llm_enabled=True, llm_provider="openai", llm_api_key="not-real"),
+            60,
         ),
         (
             "gemini",
             "GeminiInvestigationProvider",
-            Settings(llm_enabled=True, llm_provider="gemini", gemini_api_key="not-real"),
+            Settings(
+                llm_enabled=True,
+                llm_provider="gemini",
+                gemini_api_key="not-real",
+                llm_timeout_seconds=75,
+            ),
+            75,
         ),
     ],
 )
 def test_factory_selects_configured_provider(
-    monkeypatch, provider_name: str, provider_attribute: str, settings: Settings
+    monkeypatch,
+    provider_name: str,
+    provider_attribute: str,
+    settings: Settings,
+    expected_timeout: float,
 ) -> None:
     captured: dict[str, Any] = {}
 
@@ -645,6 +716,7 @@ def test_factory_selects_configured_provider(
     assert service.provider is not None
     assert service.provider.name == provider_name
     assert captured["api_key"] == "not-real"
+    assert captured["timeout_seconds"] == expected_timeout
     assert response.mode == "real_llm"
     assert response.provider == provider_name
 

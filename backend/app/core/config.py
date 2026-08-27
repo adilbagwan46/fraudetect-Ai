@@ -22,7 +22,7 @@ class Settings:
     llm_api_key: str | None = field(default=None, repr=False)
     gemini_model: str = "gemini-3.7-flash"
     gemini_api_key: str | None = field(default=None, repr=False)
-    llm_timeout_seconds: float = 20.0
+    llm_timeout_seconds: float = 60.0
     enrichment_seed: str = "fraudetect-demo-v1"
     enrichment_device_buckets: int = 10_000
     enrichment_ip_buckets: int = 5_000
@@ -86,7 +86,7 @@ def get_settings() -> Settings:
         llm_api_key=os.getenv("OPENAI_API_KEY"),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
-        llm_timeout_seconds=float(os.getenv("FRAUDETECT_LLM_TIMEOUT_SECONDS", "20")),
+        llm_timeout_seconds=float(os.getenv("FRAUDETECT_LLM_TIMEOUT_SECONDS", "60")),
         enrichment_seed=os.getenv("FRAUDETECT_ENRICHMENT_SEED", "fraudetect-demo-v1"),
         enrichment_device_buckets=int(os.getenv("FRAUDETECT_DEVICE_BUCKETS", "10000")),
         enrichment_ip_buckets=int(os.getenv("FRAUDETECT_IP_BUCKETS", "5000")),
