@@ -11,7 +11,6 @@ class HealthResponse(BaseModel):
 
 class DatasetStatusResponse(BaseModel):
     status: Literal["ready", "not_prepared"]
-    manifest_path: str
     source_kind: str | None = None
     rows: int | None = Field(default=None, ge=0)
     generated_at: str | None = None

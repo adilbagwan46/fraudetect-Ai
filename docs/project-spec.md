@@ -12,9 +12,9 @@ The one-week build covers payment fraud only. It does not attempt chargeback man
 
 1. An analyst opens the risk overview and filters suspicious transactions.
 2. The analyst selects one transaction and sees its model probability, configured risk level, and contributing factors.
-3. Behavioral and local graph evidence reveals relevant history, shared identifiers, and connected risky entities.
-4. The AI investigator retrieves evidence through bounded tools and returns validated structured findings, uncertainty, and a policy-constrained recommendation.
-5. The analyst makes the decision; the investigation inputs and outputs are retained in an audit record.
+3. Deterministic behavioral and relationship intelligence summarizes strictly earlier aggregate history without exposing identities.
+4. The Copilot summarizes a positive-selection sanitized snapshot and returns grounded structured findings, uncertainty, and reversible advisory actions; deterministic fallback remains available offline.
+5. The analyst owns the lifecycle decision, while immutable snapshots and server-generated append-only events preserve the factual audit trail.
 
 ## Success criteria
 
@@ -37,30 +37,21 @@ PaySim is itself a published simulator-derived dataset rather than raw merchant 
 
 PaySim does not provide device IDs, IP addresses, or physical location. Phase 1 adds optional deterministic demo-only device and IP identifiers derived from a documented seed and account identifier. The mapping does **not** use the fraud label. Collisions are deliberate so graph behavior can be demonstrated, but conclusions based on those relationships are demo evidence, not measured real-world performance.
 
-For repository tests and the UI smoke demo, a small deterministic generated dataset is provided by script. It is not used for final reported model claims.
+For repository tests and the UI smoke demo, small deterministic generated fixtures are provided by script. They are not used for final reported model claims.
 
 ## Architecture
 
 ```text
-PaySim CSV / generated demo events
-             |
-       validated ingestion
-             |
-   normalized transaction contract
-             |
-      feature engineering
-         /          \
- ML risk engine   relationship engine
-         \          /
-         unified evidence context
-                  |
-       tool-bounded AI investigator
-                  |
-       structured investigation result
-                  |
-        FastAPI + SQLite audit store
-                  |
-       React analyst workspace
+Transaction
+    -> frozen ML fraud model
+    -> fraud probability + ML risk level
+    -> deterministic evidence
+    -> causal behavioral intelligence
+    -> causal relationship intelligence
+    -> privacy-sanitized immutable case snapshot
+    -> grounded LLM report or deterministic fallback
+    -> human analyst lifecycle
+    -> append-only audit timeline
 ```
 
 This is a modular monolith. Python modules isolate data, risk, relationships, evidence tools, LLM providers, and persistence without deployment-heavy microservices.
@@ -68,27 +59,31 @@ This is a modular monolith. Python modules isolate data, risk, relationships, ev
 ## Component boundaries
 
 - **Data pipeline:** validates PaySim-compatible inputs, normalizes names/types, enriches demo identifiers, engineers non-model-specific features, and creates chronological train/validation/test manifests.
-- **ML risk engine (Phase 2):** compares logistic regression with HistGradientBoosting, chooses thresholds on validation data, serializes the full preprocessing/model pipeline, and exposes calibrated probability separately from risk level.
-- **Relationship engine (Phase 3):** builds an in-memory/local NetworkX graph and returns bounded neighborhoods and aggregate signals. No graph database is needed.
-- **Evidence layer (Phase 3/4):** turns repository results into typed, citation-addressable evidence objects.
-- **AI investigator (Phase 4):** invokes only allow-listed tools, validates structured output, rejects unsupported evidence references, and degrades to an unavailable state without affecting ML results.
+- **ML risk engine:** uses a validation-selected, frozen HistGradientBoosting pipeline and exposes calibrated probability separately from presentation risk level.
+- **Evidence layer:** creates deterministic, citation-addressable model, amount, balance, type, and time evidence without changing the model output.
+- **Behavioral and relationship engines:** query separate local indexes and return bounded identifier-free aggregates using only `historical.step < current.step`.
+- **AI investigator:** receives only the positive-selection sanitized context, validates structured output and grounding, and degrades to an explicitly labeled deterministic report without affecting ML results.
 - **API:** versioned FastAPI routes with Pydantic request/response contracts and centralized exception handling.
-- **Storage:** SQLite stores normalized demo transactions, investigations, evidence snapshots, and audit events. Model artifacts and evaluation reports remain versioned files.
-- **Frontend:** React/Vite/TypeScript analyst workspace with focused views for overview, transactions, investigation, local graph, and model evaluation.
+- **Storage:** separate ignored SQLite files support local historical indexes, immutable cases, lifecycle history, and append-only audit events. Model artifacts and evaluation reports remain ignored versioned files.
+- **Frontend:** React/Vite/TypeScript analyst workspace for readiness, operational metrics, case queue, evidence, causal context, Copilot output, human decisions, and timeline.
 
-## Planned API surface
+## Implemented API surface
 
 - `GET /api/v1/health`
 - `GET /api/v1/dataset/status`
-- `GET /api/v1/transactions` and `GET /api/v1/transactions/{id}`
 - `POST /api/v1/risk/predict`
-- `GET /api/v1/transactions/{id}/evidence`
-- `GET /api/v1/entities/{id}/connections`
-- `POST /api/v1/investigations`
-- `GET /api/v1/investigations/{id}`
+- `POST /api/v1/risk/investigate`
+- `POST /api/v1/risk/investigate/copilot`
+- `POST /api/v1/cases`
+- `GET /api/v1/cases` and `GET /api/v1/cases/{case_id}`
+- `PATCH /api/v1/cases/{case_id}`
+- `POST /api/v1/cases/{case_id}/copilot`
+- `GET /api/v1/model/status`
 - `GET /api/v1/model/evaluation`
+- `GET /api/v1/system/readiness`
+- `GET /api/v1/system/metrics`
 
-Only health and dataset status are implemented in Phase 1.
+These routes never execute payment actions. Referenced investigation inputs are resolved internally and omitted from all returned and stored case payloads.
 
 ## Risk and action semantics
 
@@ -109,4 +104,3 @@ Model probability is the estimator output. Risk score is its 0–100 presentatio
 - Multiple agents, vector databases, RAG infrastructure, microservices, Kubernetes, live blocking, graph databases, online model learning, and production-scale streaming.
 - Claims that synthetic enrichment proves device/IP fraud detection performance.
 - Tuning against the held-out test set.
-

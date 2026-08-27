@@ -6,7 +6,7 @@ Fraudetect separates three responsibilities:
 
 1. The frozen Phase 2A model produces fraud probability, classification, threshold, operating mode, and risk level.
 2. The deterministic Phase 2B engine produces factual evidence around that output.
-3. A future LLM may summarize the typed investigation context but will not calculate fraud risk or invent evidence.
+3. The optional LLM Copilot may summarize the sanitized typed investigation context but does not calculate fraud risk or receive authority to invent evidence.
 
 Evidence is associative context, not causal attribution. The engine deliberately uses phrases such as “risk signal” and “historical training prevalence,” never “this caused fraud.”
 
@@ -106,7 +106,7 @@ baselines without changing or competing with Phase 2B model evidence. See
 - deterministic evidence
 - reference-profile identity and approved aggregate context
 
-This is the future LLM’s controlled input. It provides no unrestricted dataset access, arbitrary model internals, or application state.
+This is the sanitizer's source context. The Copilot receives a smaller positive-selection projection with no unrestricted dataset access, arbitrary model internals, identifiers, raw history, or application state.
 
 ## Limitations
 

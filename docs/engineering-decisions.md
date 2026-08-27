@@ -36,7 +36,7 @@
 
 ## ED-005 — Compare a simple baseline with a practical nonlinear model
 
-**Decision:** Phase 2 will compare logistic regression and scikit-learn HistGradientBoosting before selecting a final model.
+**Decision:** Phase 2 compared logistic regression and scikit-learn HistGradientBoosting before selecting the frozen weighted HistGradientBoosting model.
 
 **Why:** logistic regression gives a transparent baseline; histogram gradient boosting captures nonlinear interactions without adding XGBoost installation and deployment complexity.
 
@@ -60,7 +60,7 @@
 
 **Why:** schema validation alone prevents malformed JSON but not hallucinated facts. Evidence references make factual claims mechanically checkable.
 
-**Fallback:** if the provider is absent, slow, or invalid, the API returns ML and relationship evidence with `ai_investigation.status = unavailable`.
+**Fallback:** if the provider is disabled, absent, slow, invalid, or rejected by grounding checks, the API returns a typed report explicitly marked `deterministic_fallback`; the frozen ML and deterministic intelligence remain available.
 
 ## ED-009 — Human approval is the terminal action
 

@@ -26,8 +26,48 @@ def test_dataset_status_handles_missing_manifest(tmp_path: Path, monkeypatch) ->
         response = TestClient(app).get("/api/v1/dataset/status")
         assert response.status_code == 200
         assert response.json()["status"] == "not_prepared"
+        assert str(tmp_path) not in response.text
+        assert "manifest_path" not in response.json()
     finally:
         get_settings.cache_clear()
+
+
+def test_validation_errors_do_not_echo_submitted_transaction_references(
+    tmp_path: Path, monkeypatch
+) -> None:
+    private_reference = "PRIVATE-REFERENCE-DO-NOT-ECHO"
+    monkeypatch.setenv("FRAUDETECT_CASE_DATABASE", str(tmp_path / "cases.sqlite"))
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        responses = [
+            client.post(
+                "/api/v1/risk/investigate",
+                json={"transaction_reference": f"{private_reference}!"},
+            ),
+            client.post(
+                "/api/v1/risk/investigate/copilot",
+                json={
+                    "transaction_reference": private_reference,
+                    "transaction_type": "TRANSFER",
+                    "amount": 1,
+                    "origin_balance_before": 2,
+                    "hour_of_day": 3,
+                },
+            ),
+            client.post(
+                "/api/v1/cases",
+                json={"transaction_reference": f"{private_reference}!"},
+            ),
+        ]
+    finally:
+        get_settings.cache_clear()
+
+    for response in responses:
+        assert response.status_code == 422
+        assert private_reference not in response.text
+        assert all("input" not in item for item in response.json()["detail"])
+        assert all("ctx" not in item for item in response.json()["detail"])
 
 
 def test_system_readiness_reports_safe_component_state(

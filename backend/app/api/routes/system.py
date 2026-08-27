@@ -31,7 +31,6 @@ def dataset_status(settings: Annotated[Settings, Depends(get_settings)]) -> Data
     if not manifest_path.is_file():
         return DatasetStatusResponse(
             status="not_prepared",
-            manifest_path=str(manifest_path),
             message="Run the data preparation command before model training.",
         )
 
@@ -40,13 +39,11 @@ def dataset_status(settings: Annotated[Settings, Depends(get_settings)]) -> Data
     except (OSError, json.JSONDecodeError):
         return DatasetStatusResponse(
             status="not_prepared",
-            manifest_path=str(manifest_path),
             message="The dataset manifest is unreadable or invalid.",
         )
 
     return DatasetStatusResponse(
         status="ready",
-        manifest_path=str(manifest_path),
         source_kind=manifest.get("source", {}).get("kind"),
         rows=manifest.get("dataset", {}).get("rows"),
         generated_at=manifest.get("generated_at"),

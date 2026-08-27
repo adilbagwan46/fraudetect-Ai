@@ -61,7 +61,9 @@ def _raise_investigation_error(error: Exception) -> None:
         error,
         (TransactionReferenceNotFoundError, RelationshipTransactionNotFoundError),
     ):
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(
+            status_code=404, detail="Transaction reference was not found"
+        ) from error
     raise HTTPException(status_code=503, detail=str(error)) from error
 
 

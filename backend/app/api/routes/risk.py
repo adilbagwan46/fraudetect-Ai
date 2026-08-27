@@ -79,11 +79,15 @@ def risk_investigation(
         context, _ = build_investigation(request, settings)
         return context
     except TransactionReferenceNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(
+            status_code=404, detail="Transaction reference was not found"
+        ) from error
     except BehaviorHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except RelationshipTransactionNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(
+            status_code=404, detail="Transaction reference was not found"
+        ) from error
     except RelationshipHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ModelUnavailableError as error:
@@ -104,11 +108,15 @@ def risk_copilot_investigation(
         sanitized = build_sanitized_context(context, action)
         return copilot.investigate(sanitized)
     except TransactionReferenceNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(
+            status_code=404, detail="Transaction reference was not found"
+        ) from error
     except BehaviorHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except RelationshipTransactionNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(
+            status_code=404, detail="Transaction reference was not found"
+        ) from error
     except RelationshipHistoryUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ModelUnavailableError as error:

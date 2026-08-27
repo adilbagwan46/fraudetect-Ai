@@ -4,7 +4,7 @@
 
 Each phase ends with runnable tests and a usable vertical increment. The order protects the measurable ML core before graph, LLM, and UI polish are added.
 
-## Phase 1 — Foundation and data pipeline (current)
+## Phase 1 — Foundation and data pipeline (complete)
 
 - Establish Python/FastAPI and React/Vite/TypeScript project boundaries.
 - Define centralized settings and API health/data-readiness contracts.
@@ -138,6 +138,16 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** a real provider can be enabled safely without weakening deterministic fraud
 intelligence, privacy, grounding, case, lifecycle, audit, or offline-fallback contracts.
+
+## Phase 10 — Final validation and portfolio readiness (current)
+
+- Validate the real-provider path only when it is explicitly enabled with a local server-side credential; never fabricate an external request.
+- Exercise the isolated demo, API lifecycle, closed-case protections, browser workflow, responsive layout, and console behavior.
+- Reconfirm snapshot immutability, append-only audit protection, privacy boundaries, ignored artifacts, causal history, and the frozen model checksum.
+- Correct only genuine validation defects and remove materially stale portfolio documentation.
+- Run the complete backend, static, formatting, and frontend production verification suite.
+
+**Exit condition:** the portfolio build is technically accurate, reproducible locally, honest about its synthetic-data and local-storage limitations, and remains uncommitted pending review.
 
 ## Major implementation choices
 

@@ -231,15 +231,26 @@ def test_investigation_invalid_reference_is_safely_rejected(
     create_test_history(history_database)
     monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
     monkeypatch.setenv("FRAUDETECT_BEHAVIORAL_HISTORY_DB", str(history_database))
+    monkeypatch.setenv("FRAUDETECT_CASE_DATABASE", str(tmp_path / "cases.sqlite"))
     get_settings.cache_clear()
     try:
-        response = TestClient(app).post(
-            "/api/v1/risk/investigate",
-            json={"transaction_reference": "TX-999999999"},
-        )
+        client = TestClient(app)
+        responses = [
+            client.post(
+                endpoint,
+                json={"transaction_reference": "TX-999999999"},
+            )
+            for endpoint in (
+                "/api/v1/risk/investigate",
+                "/api/v1/risk/investigate/copilot",
+                "/api/v1/cases",
+            )
+        ]
 
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Unknown transaction reference: TX-999999999"
+        for response in responses:
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Transaction reference was not found"
+            assert "TX-999999999" not in response.text
     finally:
         get_settings.cache_clear()
 

@@ -104,10 +104,10 @@ The investigation response includes `behavioral_context` and may include determi
 evidence. Model prediction, reference-population evidence, and origin-specific behavioral
 deviation remain explicitly separate concepts.
 
-## Privacy and future LLM boundary
+## Privacy and Copilot boundary
 
 Raw PaySim customer/destination identifiers and transaction references are internal lookup keys.
-Public behavioral responses contain no identifiers and no raw history. A future LLM may receive
+Public behavioral responses contain no identifiers and no raw history. The Copilot may receive
 only model output, deterministic evidence, approved aggregate reference context, and this aggregate
 behavioral context. It must not receive `nameOrig`, `nameDest`, raw transaction IDs, raw history, or
 unrestricted dataset access.

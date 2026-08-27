@@ -8,15 +8,21 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 9 Real LLM Copilot Operationalization is implemented. Optional real-provider reports now carry safe attempt, success, latency, and bounded failure metadata; configuration-only readiness never makes a paid external call; and every provider failure remains a clearly labeled deterministic fallback. Legacy reports continue to load without invented metadata. See [docs/llm-copilot.md](docs/llm-copilot.md), [docs/analyst-workflow.md](docs/analyst-workflow.md), and [docs/auditability.md](docs/auditability.md).
+The portfolio build is feature-complete through the Phase 10 validation checkpoint. It includes a frozen and held-out-tested fraud model, deterministic evidence, causal behavioral and relationship context, an optional grounded real-LLM provider, deterministic fallback, immutable analyst cases, an append-only audit timeline, operational metrics, and an isolated demo workflow. See [docs/demo-guide.md](docs/demo-guide.md), [docs/llm-copilot.md](docs/llm-copilot.md), [docs/analyst-workflow.md](docs/analyst-workflow.md), and [docs/auditability.md](docs/auditability.md).
 
 The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
 ## Why this is not just a classifier
 
 ```text
-Transaction -> frozen ML probability -> deterministic behavior + relationship evidence
-            -> immutable case -> evidence-grounded AI brief -> human workflow decision
+Transaction
+    -> frozen ML probability + ML risk level
+    -> deterministic evidence
+    -> causal behavior + relationship context
+    -> privacy-sanitized immutable case snapshot
+    -> grounded real-LLM brief or deterministic fallback
+    -> human workflow decision
+    -> append-only audit timeline
 ```
 
 - **ML risk engine:** owns measurable fraud prediction.
@@ -27,7 +33,7 @@ Transaction -> frozen ML probability -> deterministic behavior + relationship ev
 
 ## Dataset and provenance
 
-The primary planned dataset is **PaySim**, public simulator-generated mobile-money transaction data. It provides transaction time steps, account IDs, balances, amounts, types, and fraud labels. Raw data is not committed to this repository.
+The primary model dataset is **PaySim**, public simulator-generated mobile-money transaction data. It provides transaction time steps, account IDs, balances, amounts, types, and fraud labels. Raw data is not committed to this repository.
 
 PaySim does not contain device or IP fields. The pipeline can add deterministic synthetic device/IP identifiers for demonstrating relationship workflows. This enrichment:
 
@@ -45,7 +51,7 @@ backend/                 FastAPI application and typed API contracts
 frontend/                React/Vite/TypeScript analyst UI
 ml/fraudetect_ml/data/   ingestion, enrichment, features, splitting, pipeline
 scripts/                 reproducible data commands
-tests/                   critical Phase 1 tests
+tests/                   regression, privacy, lifecycle, causality, and provider tests
 docs/                    specification, plan, and decisions
 data/                    ignored raw and prepared datasets
 artifacts/               ignored model/evaluation artifacts
@@ -150,11 +156,19 @@ cd frontend && npm run build
 
 Tests cover the data contract, frozen ML regression behavior, causal intelligence, Copilot grounding, case lifecycle and persistence, priority policy, status validation, and identifier/privacy boundaries.
 
+## Technology stack
+
+- Python 3.11+, FastAPI, Pydantic, pandas, NumPy, scikit-learn, and joblib
+- SQLite for local behavioral, relationship, case, and audit demonstration stores
+- React, TypeScript, and Vite for the analyst workspace
+- Pytest and Ruff for regression and static verification
+- Optional OpenAI Responses API adapter with Pydantic Structured Outputs
+
 The Phase 2 baseline is restricted to `transaction_type`, `amount`, `origin_balance_before`, `hour_of_day`, `log_amount`, and `amount_to_origin_balance`. Labels, identifiers, post-event balances, balance-error fields, enrichment, absolute simulation day, and destination balance are rejected from the model matrix by construction.
 
-## Evaluation plan
+## Model evaluation
 
-Phase 2 will compare a logistic-regression baseline with HistGradientBoosting. Model and threshold selection use training and validation only. The frozen choice will be evaluated once on the chronological held-out test set with:
+Phase 2 compared weighted and unweighted logistic-regression and HistGradientBoosting candidates. Model and threshold selection used training and validation only. The frozen choice was evaluated once on the chronological held-out test set with:
 
 - precision, recall, and F1;
 - confusion matrix, false positives, and false negatives;
@@ -188,13 +202,15 @@ The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_i
 - PaySim is synthetic and cannot establish real merchant performance.
 - Device/IP enrichment demonstrates relationship mechanics, is applied after temporal splitting with fixed configured bucket counts, and is excluded from the Phase 2 model.
 - The local deterministic fallback is not an LLM, and real-provider quality depends on external model access and configuration.
+- Behavioral histories can be sparse, and PaySim's account structure limits the richness of relationship intelligence.
+- Real-provider quality, latency, availability, and cost depend on the selected provider, model, and account configuration.
 - Batch CSV preparation is appropriate for the buildathon but not production streaming scale.
 - Recommendations are simulated and never execute payment actions.
 - Local SQLite case storage has no production authentication, authorization, tenancy, retention, or distributed audit controls.
 
-## Roadmap
+## Implementation history
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 10 is not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). The repository intentionally stops at final validation; production authentication, distributed storage, streaming, and deployment infrastructure are outside this portfolio build.
 
 ## License
 
