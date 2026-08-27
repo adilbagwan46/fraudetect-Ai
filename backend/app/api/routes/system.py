@@ -156,7 +156,15 @@ def system_readiness(
         ),
     ]
 
-    provider_configured = settings.llm_provider == "openai" and bool(settings.llm_api_key)
+    provider_credentials = {
+        "openai": settings.llm_api_key,
+        "gemini": settings.gemini_api_key,
+    }
+    provider_models = {
+        "openai": settings.llm_model,
+        "gemini": settings.gemini_model,
+    }
+    provider_configured = bool(provider_credentials.get(settings.llm_provider))
     if settings.llm_enabled and provider_configured:
         copilot_mode = "real_llm_configured"
         copilot_message = (
@@ -174,7 +182,11 @@ def system_readiness(
             key="llm_copilot",
             label="LLM Copilot",
             status="ready",
-            version=settings.llm_model if copilot_mode == "real_llm_configured" else None,
+            version=(
+                provider_models.get(settings.llm_provider)
+                if copilot_mode == "real_llm_configured"
+                else None
+            ),
             mode=copilot_mode,
             fallback_available=True,
             provider_enabled=settings.llm_enabled,

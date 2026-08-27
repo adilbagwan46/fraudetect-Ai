@@ -15,18 +15,20 @@ Frozen ML output + deterministic evidence + causal behavior + relationship conte
                          v
              SanitizedInvestigationContext
                          |
-              +----------+-----------+
-              |                      |
-        OpenAI provider       deterministic fallback
-              |                      |
-              +----------+-----------+
+              +----------+-----------+----------------+
+              |          |                            |
+        OpenAI provider  Gemini provider       deterministic fallback
+              |          |                            |
+              +----------+-----------+----------------+
                          |
               validated InvestigationReport
 ```
 
 The OpenAI adapter follows the official Structured Outputs pattern: the server calls the Responses
-API through `client.responses.parse` with a Pydantic response model. See the
-[official OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs).
+API through `client.responses.parse` with a Pydantic response model. The Gemini adapter uses the
+current `google-genai` SDK and `client.models.generate_content` with the same Pydantic model as its
+response schema. See the [official OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs)
+and [Google Gen AI structured-output documentation](https://googleapis.github.io/python-genai/#pydantic-model-schema-support).
 
 ## Approved context boundary
 
@@ -57,13 +59,15 @@ sources, requires limited-history qualification, and permits only reversible rev
 
 The sanitized JSON is placed in a separate user-role message inside an explicit `DATA_CONTEXT`
 boundary and declared inert data. No free-form transaction text is accepted by the request schema.
-The OpenAI request sets `store=False`; all calls remain server-side.
+OpenAI receives the instruction as a separate system message and sets `store=False`; Gemini receives
+the same instruction through `system_instruction`. All calls remain server-side.
 
 ## Provider architecture
 
-`InvestigationLLMProvider` is the provider protocol. `OpenAIInvestigationProvider` supplies the real
-server-side implementation. Tests and future providers can inject the same interface without
-changing routing, sanitization, or report validation.
+`InvestigationLLMProvider` is the provider protocol. `OpenAIInvestigationProvider` and
+`GeminiInvestigationProvider` supply the optional real server-side implementations. Both reuse the
+same sanitizer, prompts, typed report, grounding validator, failure categories, and execution
+metadata. Tests inject SDK-shaped clients without changing routing or making external requests.
 
 Real mode uses:
 
@@ -74,6 +78,18 @@ FRAUDETECT_LLM_MODEL=gpt-5.6
 OPENAI_API_KEY=<server-side secret>
 ```
 
+or:
+
+```text
+FRAUDETECT_LLM_ENABLED=true
+FRAUDETECT_LLM_PROVIDER=gemini
+GEMINI_MODEL=gemini-3.7-flash
+GEMINI_API_KEY=<server-side secret>
+```
+
+The model names remain configurable because provider access and supported model catalogs can vary.
+The Gemini default is the stable Flash model selected for low-latency structured analysis.
+
 Install the optional provider dependency with:
 
 ```bash
@@ -82,12 +98,13 @@ Install the optional provider dependency with:
 
 Never put API keys in frontend environment variables or commit `.env`.
 
-The LLM is disabled by default. No API key is needed for development, demos, or the automated test
-suite; those paths use the deterministic fallback. When enabled, the API key is read only by the
-backend and is excluded from settings representations, responses, readiness output, stored reports,
-audit events, logs, and frontend bundles. Readiness reports whether the provider is enabled and
-configured, but deliberately does not make a paid network request or claim that the external service
-is available.
+The LLM is disabled by default. A configured key does not import, initialize, or call a provider
+unless `FRAUDETECT_LLM_ENABLED=true` and its provider is explicitly selected. No API key is needed
+for development, demos, or the automated test suite; those paths use the deterministic fallback.
+Keys are read only by the backend and are excluded from settings representations, responses,
+readiness output, stored reports, audit events, logs, and frontend bundles. Readiness reports whether
+the selected provider is enabled and configured, but deliberately does not initialize it, make a
+paid network request, or claim that the external service is available.
 
 ## Structured report and validation
 
@@ -159,9 +176,40 @@ availability and retain their previous behavior.
 - No external provider call was made during automated verification because no real credential is
   stored in the repository. The adapter, structured request, configuration, and failure behavior are
   tested with injected SDK-shaped clients.
-- Provider availability, model access, latency, cost, and rate limits depend on the configured
-  OpenAI account.
+- Provider availability, model access, latency, cost, and rate limits depend on the selected
+  OpenAI or Google account.
 - Automated readiness is configuration-only. A configured provider can still fail at generation
   time; that request safely falls back and records only its non-sensitive failure category.
 - The Copilot is advisory. Human analysts retain responsibility and organizational policy governs
   any action.
+
+## Optional local Gemini verification
+
+Create a key in [Google AI Studio](https://aistudio.google.com/app/apikey), then place it only in an
+ignored local `.env` file. Do not paste it into source code, frontend variables, tests, or chat.
+
+```text
+FRAUDETECT_LLM_ENABLED=true
+FRAUDETECT_LLM_PROVIDER=gemini
+GEMINI_MODEL=gemini-3.7-flash
+GEMINI_API_KEY=<your local key>
+```
+
+Install provider dependencies and export the local file before starting the backend:
+
+```bash
+.venv/bin/python -m pip install -e ".[dev,ml,llm]"
+set -a
+source .env
+set +a
+.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+Create or open a case in the analyst workspace and generate its Copilot report. A genuine success is
+labeled `REAL LLM · ADVISORY`, returns `provider: "gemini"`, `mode: "real_llm"`, and has execution
+metadata with `generated_by: "real_provider"`, `provider_attempted: true`, and
+`provider_succeeded: true`. Any provider or grounding failure is intentionally replaced by a report
+labeled `DETERMINISTIC FALLBACK · NOT LLM-GENERATED`; raw provider errors are never returned.
+
+To verify offline behavior, stop the backend, set `FRAUDETECT_LLM_ENABLED=false` (or remove the key),
+start it again, and generate another report. It must be explicitly labeled deterministic fallback.

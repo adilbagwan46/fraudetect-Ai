@@ -27,6 +27,7 @@ ml = [
   "scikit-learn>=1.5,<2",
 ]
 llm = [
+  "google-genai>=2.19,<3",
   "openai>=2,<3",
 ]
 

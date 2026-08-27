@@ -23,6 +23,7 @@ from backend.app.services.copilot.provider import (
     CopilotProviderInvalidOutputError,
     CopilotProviderTimeoutError,
     CopilotProviderUnavailableError,
+    GeminiInvestigationProvider,
     InvestigationLLMProvider,
     OpenAIInvestigationProvider,
 )
@@ -527,28 +528,38 @@ def create_copilot_service(settings: Settings) -> CopilotService:
             fallback_reason="LLM is disabled by configuration",
             fallback_category="disabled",
         )
-    if settings.llm_provider != "openai":
+    if settings.llm_provider == "openai":
+        api_key = settings.llm_api_key
+        model = settings.llm_model
+        provider_class = OpenAIInvestigationProvider
+        provider_label = "OpenAI"
+    elif settings.llm_provider == "gemini":
+        api_key = settings.gemini_api_key
+        model = settings.gemini_model
+        provider_class = GeminiInvestigationProvider
+        provider_label = "Gemini"
+    else:
         return CopilotService(
             None,
             fallback_reason="Configured LLM provider is unsupported",
             fallback_category="unsupported_provider",
         )
-    if not settings.llm_api_key:
+    if not api_key:
         return CopilotService(
             None,
-            fallback_reason="OpenAI API key is not configured",
+            fallback_reason=f"{provider_label} API key is not configured",
             fallback_category="missing_credentials",
         )
     try:
-        provider = OpenAIInvestigationProvider(
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
+        provider = provider_class(
+            api_key=api_key,
+            model=model,
             timeout_seconds=settings.llm_timeout_seconds,
         )
     except CopilotProviderUnavailableError:
         return CopilotService(
             None,
-            fallback_reason="OpenAI provider is unavailable",
+            fallback_reason=f"{provider_label} provider is unavailable",
             fallback_category="provider_unavailable",
         )
     return CopilotService(provider)

@@ -25,11 +25,13 @@ from backend.app.services.behavioral_service import (
     build_behavioral_context,
     unavailable_behavioral_context,
 )
+from backend.app.services.copilot import service as copilot_service_module
 from backend.app.services.copilot.context_builder import build_sanitized_context
 from backend.app.services.copilot.prompts import SYSTEM_PROMPT
 from backend.app.services.copilot.provider import (
     CopilotProviderTimeoutError,
     CopilotProviderUnavailableError,
+    GeminiInvestigationProvider,
     OpenAIInvestigationProvider,
 )
 from backend.app.services.copilot.service import CopilotService, create_copilot_service
@@ -288,6 +290,157 @@ def test_openai_provider_converts_timeout_without_exposing_details() -> None:
     assert "private upstream timeout detail" not in str(caught.value)
 
 
+def test_gemini_provider_uses_structured_output_and_only_sanitized_context() -> None:
+    captured: dict[str, Any] = {}
+    context = sanitized_context(behavioral=unavailable_behavioral_context())
+    expected = CopilotService(None).investigate(context).report
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(parsed=expected)
+
+    provider = GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(models=FakeModels()),
+    )
+
+    report = provider.generate(context)
+
+    assert report == expected
+    assert captured["model"] == "test-gemini-model"
+    assert captured["config"] == {
+        "system_instruction": SYSTEM_PROMPT,
+        "response_mime_type": "application/json",
+        "response_schema": InvestigationReport,
+    }
+    assert "<DATA_CONTEXT>" in captured["contents"]
+    for forbidden in (
+        "transaction_reference",
+        "origin_key",
+        "destination_key",
+        "raw_behavioral_history",
+        "raw_relationship_history",
+    ):
+        assert forbidden not in captured["contents"]
+
+
+def test_gemini_success_has_truthful_real_provider_execution_metadata() -> None:
+    context = sanitized_context(behavioral=unavailable_behavioral_context())
+    expected = CopilotService(None).investigate(context).report
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(parsed=expected)
+
+    provider = GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(models=FakeModels()),
+    )
+
+    response = CopilotService(provider).investigate(context)
+
+    assert response.provider == "gemini"
+    assert response.model == "test-gemini-model"
+    assert response.mode == "real_llm"
+    assert response.ai_available is True
+    assert response.execution is not None
+    assert response.execution.generated_by == "real_provider"
+    assert response.execution.provider_attempted is True
+    assert response.execution.provider_succeeded is True
+    assert response.execution.failure_category is None
+
+
+@pytest.mark.parametrize(
+    ("error", "failure_category"),
+    [
+        (TimeoutError("private timeout detail"), "provider_timeout"),
+        (RuntimeError("private provider detail"), "provider_error"),
+    ],
+)
+def test_gemini_failures_use_labeled_fallback_without_exposing_details(
+    error: Exception, failure_category: str
+) -> None:
+    class FailingModels:
+        def generate_content(self, **kwargs):
+            raise error
+
+    provider = GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(models=FailingModels()),
+    )
+
+    response = CopilotService(provider).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert response.provider == "deterministic_fallback"
+    assert response.ai_available is False
+    assert response.execution is not None
+    assert response.execution.provider_attempted is True
+    assert response.execution.provider_succeeded is False
+    assert response.execution.failure_category == failure_category
+    assert "private" not in (response.fallback_reason or "")
+
+
+@pytest.mark.parametrize("parsed", [None, {"summary": "missing required fields"}])
+def test_gemini_provider_rejects_missing_or_malformed_structured_output(parsed: Any) -> None:
+    class InvalidModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(parsed=parsed)
+
+    provider = GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(models=InvalidModels()),
+    )
+
+    response = CopilotService(provider).investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert response.mode == "deterministic_fallback"
+    assert response.execution is not None
+    assert response.execution.provider_attempted is True
+    assert response.execution.provider_succeeded is False
+    assert response.execution.failure_category == "invalid_output"
+
+
+def test_gemini_grounding_rejection_uses_deterministic_fallback() -> None:
+    context = sanitized_context(behavioral=unavailable_behavioral_context())
+    invented = CopilotService(None).investigate(context).report.model_copy(deep=True)
+    invented.summary = "This proves fraud through money laundering."
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(parsed=invented)
+
+    provider = GeminiInvestigationProvider(
+        api_key="test-key-not-real",
+        model="test-gemini-model",
+        timeout_seconds=1,
+        client=SimpleNamespace(models=FakeModels()),
+    )
+
+    response = CopilotService(provider).investigate(context)
+
+    assert response.mode == "deterministic_fallback"
+    assert response.provider == "deterministic_fallback"
+    assert response.execution is not None
+    assert response.execution.provider_attempted is True
+    assert response.execution.provider_succeeded is False
+    assert response.execution.failure_category == "grounding_rejected"
+    assert "money laundering" not in response.report.model_dump_json().lower()
+
+
 def test_fallback_handles_no_and_limited_history_without_fabrication() -> None:
     no_history = sanitized_context(behavioral=unavailable_behavioral_context())
     current = historical("TX-current", 2, 250_000)
@@ -400,6 +553,11 @@ def test_strong_deviation_is_described_without_becoming_a_fraud_claim() -> None:
             "missing_credentials",
         ),
         (
+            Settings(llm_enabled=True, llm_provider="gemini", gemini_api_key=None),
+            "not configured",
+            "missing_credentials",
+        ),
+        (
             Settings(llm_enabled=True, llm_provider="unsupported", llm_api_key="unused"),
             "unsupported",
             "unsupported_provider",
@@ -421,6 +579,74 @@ def test_disabled_or_misconfigured_real_provider_falls_back(
     assert response.execution.provider_succeeded is False
     assert response.execution.generation_latency_ms is None
     assert response.execution.failure_category == category
+
+
+def test_gemini_key_alone_does_not_initialize_provider(monkeypatch) -> None:
+    def fail_if_initialized(**kwargs):
+        raise AssertionError("Disabled Gemini provider was initialized")
+
+    monkeypatch.setattr(
+        copilot_service_module,
+        "GeminiInvestigationProvider",
+        fail_if_initialized,
+    )
+
+    response = create_copilot_service(
+        Settings(
+            llm_enabled=False,
+            llm_provider="gemini",
+            gemini_api_key="configured-but-disabled-not-real",
+        )
+    ).investigate(sanitized_context(behavioral=unavailable_behavioral_context()))
+
+    assert response.mode == "deterministic_fallback"
+    assert response.execution is not None
+    assert response.execution.failure_category == "disabled"
+    assert response.execution.provider_attempted is False
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "provider_attribute", "settings"),
+    [
+        (
+            "openai",
+            "OpenAIInvestigationProvider",
+            Settings(llm_enabled=True, llm_provider="openai", llm_api_key="not-real"),
+        ),
+        (
+            "gemini",
+            "GeminiInvestigationProvider",
+            Settings(llm_enabled=True, llm_provider="gemini", gemini_api_key="not-real"),
+        ),
+    ],
+)
+def test_factory_selects_configured_provider(
+    monkeypatch, provider_name: str, provider_attribute: str, settings: Settings
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeProvider:
+        name = provider_name
+
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.model = kwargs["model"]
+
+        def generate(self, context):
+            return CopilotService(None).investigate(context).report
+
+    monkeypatch.setattr(copilot_service_module, provider_attribute, FakeProvider)
+
+    service = create_copilot_service(settings)
+    response = service.investigate(
+        sanitized_context(behavioral=unavailable_behavioral_context())
+    )
+
+    assert service.provider is not None
+    assert service.provider.name == provider_name
+    assert captured["api_key"] == "not-real"
+    assert response.mode == "real_llm"
+    assert response.provider == provider_name
 
 
 def test_provider_failure_and_invalid_output_are_safely_replaced() -> None:
@@ -663,9 +889,14 @@ def test_provider_cannot_claim_a_seen_relationship_is_new() -> None:
 
 
 def test_settings_repr_never_exposes_api_key() -> None:
-    settings = Settings(llm_enabled=True, llm_api_key="sk-test-secret-not-real")
+    settings = Settings(
+        llm_enabled=True,
+        llm_api_key="sk-test-secret-not-real",
+        gemini_api_key="gemini-test-secret-not-real",
+    )
 
     assert "sk-test-secret-not-real" not in repr(settings)
+    assert "gemini-test-secret-not-real" not in repr(settings)
 
 
 def test_legacy_copilot_report_loads_without_invented_execution_metadata() -> None:

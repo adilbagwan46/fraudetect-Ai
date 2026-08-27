@@ -144,7 +144,12 @@ The command creates an isolated case store plus synthetic behavioral and relatio
 
 ## Environment variables
 
-See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires `FRAUDETECT_LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`; no API key is needed for development, testing, prediction, evidence, behavior, or fallback reports. Provider secrets are never sent to the frontend. Readiness reports configuration state only and does not call the external provider.
+See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires
+`FRAUDETECT_LLM_ENABLED=true`, an explicit `FRAUDETECT_LLM_PROVIDER` selection, and the matching
+server-side `OPENAI_API_KEY` or `GEMINI_API_KEY`. A key alone never enables a provider. No API key is
+needed for development, testing, prediction, evidence, behavior, or fallback reports. Provider
+secrets are never sent to the frontend. Readiness reports configuration state only and does not
+call either external provider.
 
 ## Testing
 
@@ -162,7 +167,7 @@ Tests cover the data contract, frozen ML regression behavior, causal intelligenc
 - SQLite for local behavioral, relationship, case, and audit demonstration stores
 - React, TypeScript, and Vite for the analyst workspace
 - Pytest and Ruff for regression and static verification
-- Optional OpenAI Responses API adapter with Pydantic Structured Outputs
+- Optional OpenAI Responses API and Google Gen AI Gemini adapters with Pydantic structured output
 
 The Phase 2 baseline is restricted to `transaction_type`, `amount`, `origin_balance_before`, `hour_of_day`, `log_amount`, and `amount_to_origin_balance`. Labels, identifiers, post-event balances, balance-error fields, enrichment, absolute simulation day, and destination balance are rejected from the model matrix by construction.
 
