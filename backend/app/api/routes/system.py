@@ -4,15 +4,17 @@ import json
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.core.config import Settings, get_settings
+from backend.app.schemas.case import OperationalMetricsResponse
 from backend.app.schemas.system import (
     DatasetStatusResponse,
     HealthResponse,
     ReadinessComponent,
     SystemReadinessResponse,
 )
+from backend.app.services.case_service import CaseStoreUnavailableError, SQLiteCaseRepository
 from backend.app.services.risk_service import ModelUnavailableError, load_active_bundle
 
 router = APIRouter(tags=["system"])
@@ -179,3 +181,17 @@ def system_readiness(
     )
     overall = "ready" if all(item.status == "ready" for item in components) else "degraded"
     return SystemReadinessResponse(status=overall, components=components)
+
+
+@router.get("/system/metrics", response_model=OperationalMetricsResponse)
+def system_metrics(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OperationalMetricsResponse:
+    """Return aggregate workflow metrics without case content or identifiers."""
+
+    try:
+        return SQLiteCaseRepository(settings.case_database).metrics()
+    except CaseStoreUnavailableError as error:
+        raise HTTPException(
+            status_code=503, detail="Operational metrics are unavailable."
+        ) from error

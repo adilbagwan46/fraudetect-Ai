@@ -39,11 +39,12 @@ Open `http://127.0.0.1:5173/`.
 ## Five-minute narrative
 
 1. Expand system readiness. Explain that the model, deterministic evidence, local historical indexes, case store, and Copilot mode are independently observable without exposing secrets or data paths.
-2. Select the `high-risk` seeded case. Contrast `CRITICAL PRIORITY` (queue ordering) with `HIGH ML RISK` (frozen prediction), then show its saved deterministic fallback report and analyst escalation.
-3. Select `strong-behavioral-deviation`. Show that behavioral comparisons use only events from earlier PaySim steps and that deviation is evidence, not proof.
-4. Select `new-relationship`. Show prior origin network breadth alongside the explicitly first-observed pair; no identities or raw edges are returned.
-5. Select `history-unavailable`. Show honest unavailable-state language instead of invented context.
-6. Select `low-risk`, move it through `IN_REVIEW` and `CLEARED`, then `CLOSED`. Show that each real transition appears in the decision trace and that closed-case controls are disabled.
+2. Review the operational overview: the five seeded cases intentionally cover `OPEN`, `IN_REVIEW`, `ESCALATED`, `CLEARED`, and `CLOSED`, and show multiple workflow priorities.
+3. Select the `high-risk` seeded case. Contrast `CRITICAL PRIORITY` (queue ordering) with `HIGH ML RISK` (frozen prediction), then show its saved deterministic fallback report and analyst escalation.
+4. Select `strong-behavioral-deviation`. Its `IN_REVIEW` timeline includes a real persisted note event; behavioral comparisons still use only earlier synthetic events.
+5. Select `new-relationship`. It is `CLEARED`; show prior origin network breadth alongside the explicitly first-observed pair and its factual lifecycle events.
+6. Select `history-unavailable`. It is `CLOSED`; show honest unavailable-state language, the closure timeline, and disabled controls.
+7. Select `low-risk` to demonstrate the remaining `OPEN` workload and create additional actions if desired.
 
 The displayed case IDs are generated application identifiers. Scenario names appear in the `make demo` output and are not stored in public case payloads.
 
@@ -54,3 +55,4 @@ The displayed case IDs are generated application identifiers. Scenario names app
 - Behavioral and relationship context use `historical.step < current.step`.
 - The Copilot receives only approved identifier-free context and remains advisory.
 - The analyst owns lifecycle and disposition; no decision is fed back as model truth.
+- Audit events and operational metrics describe workflow actions only; they are not a second fraud-intelligence source.

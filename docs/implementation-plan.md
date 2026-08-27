@@ -111,9 +111,21 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 
 **Exit condition:** the existing intelligence system can be demonstrated end to end with safe readiness feedback, reproducible scenarios, real stored event traces, graceful degradation, and no change to frozen or causal contracts.
 
-## Phase 8 — Not started
+## Phase 8 — Auditability and operational intelligence (complete)
 
-No Phase 8 scope is implied or started by Phase 7 completion.
+- Add a server-owned append-only audit table for meaningful case actions without note content, transaction identity, raw history, labels, paths, or secrets.
+- Keep lifecycle history authoritative and expose one backward-compatible chronological case timeline through `decision_trace`.
+- Migrate Phase 6/7 SQLite stores by adding an empty audit table and protection triggers without backfilling or changing existing cases.
+- Add aggregate workflow metrics for active workload, status, priority, disposition, and saved Copilot mode.
+- Add a compact operational dashboard while preserving all existing queue filters and visible reset behavior.
+- Expand the isolated demo to cover all lifecycle states, multiple priorities, persisted events, and deterministic Copilot fallback.
+- Verify append-only behavior, failed-action rollback, snapshot stability, privacy, migration, metrics, demo safety, and full regression boundaries.
+
+**Exit condition:** analysts can inspect factual case actions and aggregate operational workload without exposing identifiers or changing frozen, deterministic, causal, Copilot, priority, or human-decision contracts.
+
+## Phase 9 — Not started
+
+No Phase 9 scope is implied or started by Phase 8 completion.
 
 ## Major implementation choices
 

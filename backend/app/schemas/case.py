@@ -103,11 +103,16 @@ class DecisionTraceItem(BaseModel):
         "CASE_ESCALATED",
         "CASE_CLEARED",
         "CASE_CLOSED",
+        "NOTE_ADDED",
     ]
     occurred_at: datetime
     actor: Literal["SYSTEM", "COPILOT", "ANALYST"]
     label: str
     detail: str
+    previous_status: CaseStatus | None = None
+    new_status: CaseStatus | None = None
+    copilot_mode: Literal["real_llm", "deterministic_fallback"] | None = None
+    note_recorded: bool = False
 
 
 class CaseDetailResponse(BaseModel):
@@ -129,3 +134,51 @@ class CaseListResponse(BaseModel):
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
     offset: int = Field(ge=0)
+
+
+class CaseStatusCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    open: int = Field(ge=0)
+    in_review: int = Field(ge=0)
+    escalated: int = Field(ge=0)
+    cleared: int = Field(ge=0)
+    closed: int = Field(ge=0)
+
+
+class CasePriorityCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    critical: int = Field(ge=0)
+    high: int = Field(ge=0)
+    medium: int = Field(ge=0)
+    low: int = Field(ge=0)
+
+
+class CaseDispositionCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    none: int = Field(ge=0)
+    cleared: int = Field(ge=0)
+    suspicious: int = Field(ge=0)
+    escalated: int = Field(ge=0)
+
+
+class CopilotReportCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total: int = Field(ge=0)
+    deterministic_fallback: int = Field(ge=0)
+    real_llm: int = Field(ge=0)
+
+
+class OperationalMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_cases: int = Field(ge=0)
+    active_cases: int = Field(ge=0)
+    status_counts: CaseStatusCounts
+    priority_counts: CasePriorityCounts
+    disposition_counts: CaseDispositionCounts
+    copilot_reports: CopilotReportCounts
+    case_priority_is_distinct_from_ml_risk: Literal[True] = True

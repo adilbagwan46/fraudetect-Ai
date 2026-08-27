@@ -12,15 +12,20 @@ from backend.app.schemas.case import (
     AnalystDecision,
     AnalystDisposition,
     CaseDetailResponse,
+    CaseDispositionCounts,
     CaseListResponse,
     CasePriority,
+    CasePriorityCounts,
     CaseSourceType,
     CaseStatus,
+    CaseStatusCounts,
     CaseStatusHistoryItem,
     CaseSummary,
     CaseUpdateRequest,
+    CopilotReportCounts,
     DecisionTraceItem,
     EvidenceSummary,
+    OperationalMetricsResponse,
 )
 from backend.app.schemas.copilot import (
     CopilotInvestigationResponse,
@@ -93,6 +98,8 @@ class CaseRepository(Protocol):
     def save_copilot(
         self, case_id: str, response: CopilotInvestigationResponse
     ) -> CaseDetailResponse: ...
+
+    def metrics(self) -> OperationalMetricsResponse: ...
 
 
 def _utc_now() -> datetime:
@@ -218,6 +225,43 @@ class SQLiteCaseRepository:
                 }
                 if "copilot_generated_at" not in columns:
                     connection.execute("ALTER TABLE cases ADD COLUMN copilot_generated_at TEXT")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS case_audit_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        case_id TEXT NOT NULL REFERENCES cases(case_id),
+                        event_type TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        actor TEXT NOT NULL,
+                        previous_status TEXT,
+                        new_status TEXT,
+                        copilot_mode TEXT,
+                        note_recorded INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS case_audit_idx ON case_audit_events "
+                    "(case_id, occurred_at, sequence)"
+                )
+                connection.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS case_audit_events_no_update
+                    BEFORE UPDATE ON case_audit_events
+                    BEGIN
+                        SELECT RAISE(ABORT, 'audit events are append-only');
+                    END
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS case_audit_events_no_delete
+                    BEFORE DELETE ON case_audit_events
+                    BEGIN
+                        SELECT RAISE(ABORT, 'audit events are append-only');
+                    END
+                    """
+                )
         except sqlite3.Error as error:
             raise CaseStoreUnavailableError("Case store could not be initialized") from error
 
@@ -277,11 +321,115 @@ class SQLiteCaseRepository:
             for row in rows
         ]
 
+    @staticmethod
+    def _append_audit_event(
+        connection: sqlite3.Connection,
+        *,
+        case_id: str,
+        event_type: str,
+        occurred_at: str,
+        actor: str,
+        previous_status: CaseStatus | None = None,
+        new_status: CaseStatus | None = None,
+        copilot_mode: str | None = None,
+        note_recorded: bool = False,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO case_audit_events (
+                case_id, event_type, occurred_at, actor, previous_status,
+                new_status, copilot_mode, note_recorded
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                case_id,
+                event_type,
+                occurred_at,
+                actor,
+                previous_status,
+                new_status,
+                copilot_mode,
+                int(note_recorded),
+            ),
+        )
+
+    @staticmethod
+    def _audit_trace(
+        connection: sqlite3.Connection, case_id: str
+    ) -> list[DecisionTraceItem]:
+        rows = connection.execute(
+            """
+            SELECT event_type, occurred_at, actor, previous_status, new_status,
+                   copilot_mode, note_recorded
+            FROM case_audit_events
+            WHERE case_id = ?
+            ORDER BY occurred_at, sequence
+            """,
+            (case_id,),
+        ).fetchall()
+        labels = {
+            "CASE_CREATED": ("Case created", "An identifier-free investigation case was stored."),
+            "INTELLIGENCE_CAPTURED": (
+                "Intelligence snapshot captured",
+                "Frozen ML output, deterministic evidence, and available historical "
+                "context were captured together.",
+            ),
+            "COPILOT_GENERATED": (
+                "Advisory analysis generated",
+                "The saved identifier-free snapshot was summarized for analyst review.",
+            ),
+            "ANALYST_REVIEWED": ("Analyst review started", "Status changed to in review."),
+            "CASE_ESCALATED": ("Case escalated", "Status changed to escalated."),
+            "CASE_CLEARED": ("Case cleared", "Status changed to cleared."),
+            "CASE_CLOSED": ("Case closed", "The analyst workflow was closed."),
+            "NOTE_ADDED": ("Analyst note added", "A private analyst note was recorded."),
+        }
+        return [
+            DecisionTraceItem(
+                event=str(row["event_type"]),
+                occurred_at=str(row["occurred_at"]),
+                actor=str(row["actor"]),
+                label=labels[str(row["event_type"])][0],
+                detail=labels[str(row["event_type"])][1],
+                previous_status=(
+                    str(row["previous_status"])
+                    if row["previous_status"] is not None
+                    else None
+                ),
+                new_status=(
+                    str(row["new_status"]) if row["new_status"] is not None else None
+                ),
+                copilot_mode=(
+                    str(row["copilot_mode"])
+                    if row["copilot_mode"] is not None
+                    else None
+                ),
+                note_recorded=bool(row["note_recorded"]),
+            )
+            for row in rows
+        ]
+
     def _detail_from_row(
         self, connection: sqlite3.Connection, row: sqlite3.Row
     ) -> CaseDetailResponse:
         copilot_json = row["copilot_json"]
         history = self._history(connection, str(row["case_id"]))
+        audit_trace = self._audit_trace(connection, str(row["case_id"]))
+        legacy_trace = self._decision_trace(row, history)
+        if audit_trace and not any(
+            item.event == "CASE_CREATED" for item in audit_trace
+        ):
+            audit_keys = {(item.event, item.occurred_at) for item in audit_trace}
+            legacy_trace = [
+                item
+                for item in legacy_trace
+                if (item.event, item.occurred_at) not in audit_keys
+            ]
+            decision_trace = sorted(
+                [*legacy_trace, *audit_trace], key=lambda item: item.occurred_at
+            )
+        else:
+            decision_trace = audit_trace or legacy_trace
         return CaseDetailResponse(
             case=self._summary(row),
             intelligence_snapshot=SanitizedInvestigationContext.model_validate_json(
@@ -294,7 +442,7 @@ class SQLiteCaseRepository:
                 else None
             ),
             status_history=history,
-            decision_trace=self._decision_trace(row, history),
+            decision_trace=decision_trace,
         )
 
     @staticmethod
@@ -420,6 +568,21 @@ class SQLiteCaseRepository:
                     """,
                     (case_id, now),
                 )
+                self._append_audit_event(
+                    connection,
+                    case_id=case_id,
+                    event_type="CASE_CREATED",
+                    occurred_at=now,
+                    actor="SYSTEM",
+                    new_status="OPEN",
+                )
+                self._append_audit_event(
+                    connection,
+                    case_id=case_id,
+                    event_type="INTELLIGENCE_CAPTURED",
+                    occurred_at=now,
+                    actor="SYSTEM",
+                )
                 row = connection.execute(
                     "SELECT * FROM cases WHERE case_id = ?", (case_id,)
                 ).fetchone()
@@ -536,6 +699,15 @@ class SQLiteCaseRepository:
                     """,
                     (target_status, now, disposition, note, disposition_at, case_id),
                 )
+                if request.analyst_note is not None:
+                    self._append_audit_event(
+                        connection,
+                        case_id=case_id,
+                        event_type="NOTE_ADDED",
+                        occurred_at=now,
+                        actor="ANALYST",
+                        note_recorded=True,
+                    )
                 if target_status != current_status:
                     connection.execute(
                         """
@@ -552,6 +724,22 @@ class SQLiteCaseRepository:
                             disposition,
                             int(request.analyst_note is not None),
                         ),
+                    )
+                    event_for_status = {
+                        "IN_REVIEW": "ANALYST_REVIEWED",
+                        "ESCALATED": "CASE_ESCALATED",
+                        "CLEARED": "CASE_CLEARED",
+                        "CLOSED": "CASE_CLOSED",
+                    }
+                    self._append_audit_event(
+                        connection,
+                        case_id=case_id,
+                        event_type=event_for_status[target_status],
+                        occurred_at=now,
+                        actor="ANALYST",
+                        previous_status=current_status,
+                        new_status=target_status,
+                        note_recorded=request.analyst_note is not None,
                     )
                 updated = connection.execute(
                     "SELECT * FROM cases WHERE case_id = ?", (case_id,)
@@ -581,6 +769,14 @@ class SQLiteCaseRepository:
                     "updated_at = ? WHERE case_id = ?",
                     (response.model_dump_json(), now, now, case_id),
                 )
+                self._append_audit_event(
+                    connection,
+                    case_id=case_id,
+                    event_type="COPILOT_GENERATED",
+                    occurred_at=now,
+                    actor="COPILOT",
+                    copilot_mode=response.mode,
+                )
                 row = connection.execute(
                     "SELECT * FROM cases WHERE case_id = ?", (case_id,)
                 ).fetchone()
@@ -589,3 +785,65 @@ class SQLiteCaseRepository:
             raise
         except sqlite3.Error as error:
             raise CaseStoreUnavailableError("Copilot report could not be saved") from error
+
+    def metrics(self) -> OperationalMetricsResponse:
+        try:
+            with self._connect() as connection:
+                status = Counter(
+                    {str(row["status"]): int(row["count"]) for row in connection.execute(
+                        "SELECT status, COUNT(*) AS count FROM cases GROUP BY status"
+                    )}
+                )
+                priority = Counter(
+                    {str(row["priority"]): int(row["count"]) for row in connection.execute(
+                        "SELECT priority, COUNT(*) AS count FROM cases GROUP BY priority"
+                    )}
+                )
+                disposition = Counter(
+                    {str(row["analyst_disposition"]): int(row["count"])
+                     for row in connection.execute(
+                         "SELECT analyst_disposition, COUNT(*) AS count FROM cases "
+                         "GROUP BY analyst_disposition"
+                     )}
+                )
+                copilot_modes: Counter[str] = Counter()
+                for row in connection.execute(
+                    "SELECT copilot_json FROM cases WHERE copilot_json IS NOT NULL"
+                ):
+                    try:
+                        mode = json.loads(str(row["copilot_json"])).get("mode")
+                    except json.JSONDecodeError:
+                        continue
+                    if mode in {"deterministic_fallback", "real_llm"}:
+                        copilot_modes[mode] += 1
+                total = sum(status.values())
+                return OperationalMetricsResponse(
+                    total_cases=total,
+                    active_cases=total - status["CLOSED"],
+                    status_counts=CaseStatusCounts(
+                        open=status["OPEN"],
+                        in_review=status["IN_REVIEW"],
+                        escalated=status["ESCALATED"],
+                        cleared=status["CLEARED"],
+                        closed=status["CLOSED"],
+                    ),
+                    priority_counts=CasePriorityCounts(
+                        critical=priority["CRITICAL"],
+                        high=priority["HIGH"],
+                        medium=priority["MEDIUM"],
+                        low=priority["LOW"],
+                    ),
+                    disposition_counts=CaseDispositionCounts(
+                        none=disposition["NONE"],
+                        cleared=disposition["CLEARED"],
+                        suspicious=disposition["SUSPICIOUS"],
+                        escalated=disposition["ESCALATED"],
+                    ),
+                    copilot_reports=CopilotReportCounts(
+                        total=sum(copilot_modes.values()),
+                        deterministic_fallback=copilot_modes["deterministic_fallback"],
+                        real_llm=copilot_modes["real_llm"],
+                    ),
+                )
+        except sqlite3.Error as error:
+            raise CaseStoreUnavailableError("Operational metrics could not be read") from error

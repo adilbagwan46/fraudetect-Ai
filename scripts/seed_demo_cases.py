@@ -194,6 +194,39 @@ def seed_demo(
                     analyst_note="Escalated for a simulated secondary review.",
                 ),
             )
+        elif name == "strong-behavioral-deviation":
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(
+                    status="IN_REVIEW",
+                    analyst_note="Behavioral deviation queued for analyst review.",
+                ),
+            )
+        elif name == "new-relationship":
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(status="IN_REVIEW"),
+            )
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(
+                    status="CLEARED",
+                    analyst_note="Synthetic relationship context reviewed and cleared.",
+                ),
+            )
+        elif name == "history-unavailable":
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(status="IN_REVIEW"),
+            )
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(status="CLEARED"),
+            )
+            detail = repository.update(
+                detail.case.case_id,
+                CaseUpdateRequest(status="CLOSED"),
+            )
         created.append(
             {
                 "scenario": name,

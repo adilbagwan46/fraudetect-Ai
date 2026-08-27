@@ -8,7 +8,7 @@ Fraudetect AI is a focused payment-fraud analyst workspace being built for the R
 
 ## Current status
 
-Phase 7 Product Polish, Demo Experience & Investigation Observability is implemented. Analysts can follow the investigation from frozen ML prediction through deterministic and historical context, clearly labeled advisory AI analysis, and the authoritative human decision. The workspace includes safe component readiness, an event-backed decision trace, complete queue filtering, and deterministic isolated showcase cases. See [docs/analyst-workflow.md](docs/analyst-workflow.md) and [docs/demo-guide.md](docs/demo-guide.md).
+Phase 8 Auditability and Operational Intelligence is implemented. Analysts can follow an append-only, privacy-safe case timeline and inspect aggregate workload, lifecycle, priority, disposition, and Copilot-mode counts without changing any fraud intelligence. The existing readiness, queue, immutable case snapshot, and deterministic showcase remain intact. See [docs/analyst-workflow.md](docs/analyst-workflow.md), [docs/auditability.md](docs/auditability.md), and [docs/demo-guide.md](docs/demo-guide.md).
 
 The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
 
@@ -181,6 +181,8 @@ The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_i
 
 `GET /api/v1/system/readiness` exposes safe ready/unavailable states for the frozen model, deterministic evidence, reference profile, behavioral and relationship indexes, case store, and Copilot mode. It never exposes configured paths, credentials, transaction identities, or raw history. If the LLM is disabled or unavailable, it explicitly reports that deterministic fallback remains ready.
 
+`GET /api/v1/system/metrics` returns aggregate case totals, active workload, status, workflow-priority, disposition, and saved Copilot-mode counts. It returns no case IDs, notes, transaction identifiers, raw history, paths, labels, or credentials. `CRITICAL` in this response is a workflow priority and is never an ML risk level.
+
 ## Limitations
 
 - PaySim is synthetic and cannot establish real merchant performance.
@@ -192,7 +194,7 @@ The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_i
 
 ## Roadmap
 
-See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 8 is not started automatically.
+See [docs/implementation-plan.md](docs/implementation-plan.md). Phase 9 is not started automatically.
 
 ## License
 

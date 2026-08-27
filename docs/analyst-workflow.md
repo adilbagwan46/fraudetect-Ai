@@ -8,9 +8,9 @@ A case is an immutable, identifier-free snapshot of the intelligence available w
 
 Application case IDs are random `CASE-` identifiers independent of PaySim. The SQLite store contains only:
 
-- safe case metadata, workflow status, priority, note, and disposition;
+- safe case metadata, workflow status, priority, latest note, and disposition;
 - the positively selected sanitized investigation snapshot;
-- evidence counts, explicit limitations, status history, and optional Copilot output.
+- evidence counts, explicit limitations, status history, append-only safe audit events, and optional Copilot output.
 
 It does not store transaction references, origin/destination identifiers, raw history, fraud labels, model internals, API keys, or copies of the large history indexes.
 
@@ -48,6 +48,7 @@ This policy never modifies probability, risk level, classification threshold, or
 | `GET` | `/api/v1/cases/{case_id}` | Retrieve the complete analyst-safe snapshot and workflow history |
 | `PATCH` | `/api/v1/cases/{case_id}` | Apply a valid status transition and/or record an analyst note |
 | `POST` | `/api/v1/cases/{case_id}/copilot` | Generate and store an advisory report from only the saved sanitized snapshot |
+| `GET` | `/api/v1/system/metrics` | Read privacy-safe aggregate operational workload counts |
 
 List pagination uses `limit` (1–100) and `offset`. Existing risk and investigation endpoints remain backward compatible.
 
@@ -79,4 +80,6 @@ The high-risk case also receives a clearly labeled deterministic Copilot fallbac
 
 The React workspace provides a filterable queue, case creation, immutable ML assessment, deterministic evidence cards, behavioral and relationship aggregates, limitations, Copilot generation, controlled status actions, analyst notes, and an investigation decision trace. It deliberately labels case priority separately from ML risk and human disposition separately from prediction.
 
-The decision trace contains only persisted facts: case/snapshot capture time, Copilot-generation time when present, and actual analyst lifecycle transitions. It does not infer missing events or fabricate timestamps. The UI includes empty, API error, loading, no-history, component-readiness, and Copilot-fallback states. It never receives the internal reference used at creation.
+The case timeline is exposed through the backward-compatible `decision_trace` field. New cases use server-generated append-only audit events for creation, snapshot capture, notes, Copilot generation, and lifecycle actions. Status history remains authoritative for allowed transitions. Existing Phase 6/7 cases are not backfilled; their timeline is projected only from factual timestamps and flags already stored. Missing historical actions are omitted.
+
+The workspace also shows aggregate operational metrics for workload, lifecycle states, workflow priority, analyst disposition, and saved Copilot report modes. It never receives the internal reference used at creation, raw note content in metrics, or hidden database identifiers. See [auditability.md](auditability.md) for the event, migration, metrics, and privacy contracts.

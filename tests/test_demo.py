@@ -40,6 +40,28 @@ def test_demo_seeding_is_reproducible_and_isolated(tmp_path: Path) -> None:
     )
     assert high["status"] == "ESCALATED"
     assert high["copilot_mode"] == "deterministic_fallback"
+    assert {item["status"] for item in first["showcase_cases"]} == {
+        "OPEN",
+        "IN_REVIEW",
+        "ESCALATED",
+        "CLEARED",
+        "CLOSED",
+    }
+    with sqlite3.connect(tmp_path / "demo-a" / "cases.sqlite") as connection:
+        metrics = dict(
+            connection.execute("SELECT status, COUNT(*) FROM cases GROUP BY status")
+        )
+        audit_count = connection.execute(
+            "SELECT COUNT(*) FROM case_audit_events"
+        ).fetchone()[0]
+    assert metrics == {
+        "CLEARED": 1,
+        "CLOSED": 1,
+        "ESCALATED": 1,
+        "IN_REVIEW": 1,
+        "OPEN": 1,
+    }
+    assert audit_count > len(first["showcase_cases"])
     assert not settings.case_database.exists()
 
 
