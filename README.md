@@ -1,131 +1,379 @@
 # Fraudetect AI
 
-**AI-Powered Fraud Risk Detection & Investigation Platform**
+## Explainable Payment Fraud Risk & Investigation Workspace
 
-> ML detects the risk. AI investigates the evidence. Humans retain control.
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](pyproject.toml)
+[![React](https://img.shields.io/badge/React-TypeScript-3178C6?logo=react&logoColor=white)](frontend/package.json)
+[![Tests](https://img.shields.io/badge/pytest-133%20passed-2EA44F?logo=pytest&logoColor=white)](#testing--verification)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Fraudetect AI is a focused payment-fraud analyst workspace being built for the Razorpay AI Buildathon (Track 2 — AI Risk Manager). It combines measurable supervised fraud detection, behavioral signals, relationship context, and a tool-bounded AI investigation layer. It is not a transaction-blocking system and does not make autonomous financial decisions.
+> **ML detects risk. Deterministic intelligence explains the context. Humans retain control.**
 
-## Current status
+Fraudetect AI turns a payment-risk score into a structured analyst investigation. It combines a
+frozen calibrated model, deterministic evidence, causal behavioral and relationship context, an
+optional grounded Copilot, controlled case resolution, and an append-only audit timeline.
 
-The portfolio build is feature-complete through the Phase 10 validation checkpoint. It includes a frozen and held-out-tested fraud model, deterministic evidence, causal behavioral and relationship context, an optional grounded real-LLM provider, deterministic fallback, immutable analyst cases, an append-only audit timeline, operational metrics, and an isolated demo workflow. See [docs/demo-guide.md](docs/demo-guide.md), [docs/llm-copilot.md](docs/llm-copilot.md), [docs/analyst-workflow.md](docs/analyst-workflow.md), and [docs/auditability.md](docs/auditability.md).
+This is a **PaySim-backed portfolio implementation** for the Razorpay AI Risk Manager problem. It
+does not process Razorpay production data, block payments, or make autonomous fraud decisions.
 
-The frozen Phase 2A model, Phase 2B evidence, Phase 3 causal behavior, and deterministic Phase 5 relationship provider remain the sources of truth. The Copilot only summarizes approved context and never participates in prediction. The current model is an honest baseline evaluated only on public synthetic PaySim data; it is not evidence of production merchant performance.
+[**🚀 Live Demo — Coming after deployment**](docs/deployment.md) ·
+[**📚 Documentation**](#documentation) ·
+[**🧪 Tests**](#testing--verification)
 
-## Why this is not just a classifier
+---
+
+## Why Fraudetect AI?
+
+A fraud score can rank risk, but it does not tell an analyst what evidence exists, whether the
+activity differs from earlier behavior, what relationship history is available, or what decision
+was ultimately made.
+
+Fraudetect AI adds the operational layer around the model:
+
+- **ML risk** provides a calibrated probability and risk band.
+- **Deterministic evidence** explains factual score and reference context.
+- **Behavioral intelligence** compares the event with earlier activity from the same origin.
+- **Relationship intelligence** summarizes earlier pair and network context.
+- **Case workflow** separates model output, workflow priority, and analyst disposition.
+- **Optional Copilot** organizes only approved evidence into an advisory brief.
+- **Auditability** preserves the original investigation snapshot and subsequent workflow events.
+
+The system is designed to support an analyst—not replace one. No endpoint approves, blocks,
+refunds, or otherwise acts on a real payment.
+
+## Product Overview
+
+**Fraud detection** answers: _How risky does the frozen model consider this transaction?_
+
+**Fraud investigation and risk management** answer: _Why does the event deserve attention, what
+earlier context exists, what remains uncertain, and how did a human analyst resolve the case?_
+
+Fraudetect AI implements both layers in a single modular application. Core prediction and
+investigation remain available even when no external LLM is configured.
+
+## Core Capabilities
+
+| Capability | Current implementation |
+|---|---|
+| **Calibrated ML risk scoring** | Frozen, class-weighted HistGradientBoosting pipeline returns probability, LOW/MEDIUM/HIGH risk, and a simulated policy recommendation. |
+| **Deterministic evidence** | Stable evidence IDs cover model threshold, amount, balance, transaction type, time, and available historical context. |
+| **Behavioral Intelligence** | Compares a referenced event with strictly earlier activity from the same internal PaySim origin. |
+| **Relationship Intelligence** | Summarizes earlier origin-destination pair history and aggregate origin/destination network breadth. |
+| **Investigation Summary** | Compact, frontend-generated summary derived only from the immutable case snapshot; explicitly not LLM-generated. |
+| **Analyst case management** | Creates, lists, filters, retrieves, updates, and closes identifier-free investigation cases. |
+| **Workflow priority** | Deterministic LOW/MEDIUM/HIGH/CRITICAL queue ordering that remains separate from ML risk. |
+| **Analyst disposition** | Human-controlled NONE, CLEARED, or ESCALATED outcome; never treated as model ground truth. |
+| **Audit timeline** | Server-generated case, Copilot, note, and lifecycle events with SQLite UPDATE/DELETE protection. |
+| **Grounded Copilot** | Optional Gemini/OpenAI adapters produce typed advisory reports that must pass local validation and grounding checks. |
+| **Deterministic fallback** | Reproducible, explicitly non-LLM brief for disabled, unavailable, timed-out, invalid, or rejected providers. |
+| **Privacy boundaries** | Positive field selection excludes transaction references, account identifiers, raw histories, and individual fraud labels from stored cases and provider context. |
+| **Showcase mode** | Isolated three-case demonstration built from genuine prepared PaySim rows and minimal causal history subsets. |
+
+## End-to-End Investigation Flow
 
 ```text
-Transaction
-    -> frozen ML probability + ML risk level
-    -> deterministic evidence
-    -> causal behavior + relationship context
-    -> privacy-sanitized immutable case snapshot
-    -> grounded real-LLM brief or deterministic fallback
-    -> human workflow decision
-    -> append-only audit timeline
+Prepared transaction
+        ↓
+Safe feature extraction
+        ↓
+Calibrated ML probability and risk
+        ↓
+Deterministic evidence
+        ↓
+Causal behavioral intelligence
+        ↓
+Causal relationship intelligence
+        ↓
+Immutable case snapshot
+        ↓
+Deterministic Investigation Summary
+        ↓
+Optional grounded Copilot or deterministic fallback
+        ↓
+Human analyst review
+        ↓
+Escalate or clear → close
+        ↓
+Append-only audit timeline
 ```
 
-- **ML risk engine:** owns measurable fraud prediction.
-- **Behavioral intelligence:** compares the event with prior customer behavior.
-- **Relationship intelligence:** summarizes causal origin-destination history and aggregate network breadth without claiming hidden or risky identities.
-- **AI investigator:** retrieves bounded evidence, distinguishes facts from interpretation, and reports uncertainty.
-- **Human analyst:** owns the final action.
+1. A prepared reference is resolved internally, or the API receives the supported manual scoring
+   fields.
+2. The frozen pipeline derives two safe features and calculates fraud probability.
+3. Evidence services add training-reference and available historical context without modifying the
+   score.
+4. A positive-selection sanitizer creates the identifier-free case snapshot.
+5. The analyst reviews the snapshot, may request an advisory brief, adds a note, and controls the
+   lifecycle decision.
+6. Server-generated events preserve what happened after the original intelligence was captured.
 
-## Dataset and provenance
+## System Architecture
 
-The primary model dataset is **PaySim**, public simulator-generated mobile-money transaction data. It provides transaction time steps, account IDs, balances, amounts, types, and fraud labels. Raw data is not committed to this repository.
+```mermaid
+flowchart LR
+    Analyst[Risk analyst] --> UI[React + TypeScript workspace]
+    UI -->|Same-origin /api/v1| API[FastAPI application]
 
-PaySim does not contain device or IP fields. The pipeline can add deterministic synthetic device/IP identifiers for demonstrating relationship workflows. This enrichment:
+    subgraph Services[Deterministic application services]
+        Risk[ML prediction]
+        Evidence[Evidence engine]
+        Behavior[Behavioral intelligence]
+        Relationship[Relationship intelligence]
+        Cases[Case lifecycle]
+        Audit[Audit timeline + metrics]
+    end
 
-- is generated from account IDs and a documented seed;
-- never reads the fraud label;
-- is reproducible;
-- must not be interpreted as real merchant evidence or model performance.
+    API --> Risk
+    API --> Evidence
+    API --> Behavior
+    API --> Relationship
+    API --> Cases
+    Cases --> Audit
 
-The repository also includes a small deterministic data generator for local development. Its output is demo-only and must not be used for final evaluation claims.
+    Model[(Frozen model + reference profile)] --> Risk
+    Model --> Evidence
+    BehaviorDB[(Behavioral SQLite index)] --> Behavior
+    RelationshipDB[(Relationship SQLite index)] --> Relationship
+    CaseDB[(Case + audit SQLite store)] --> Cases
 
-## Repository structure
+    API --> Copilot[Optional grounded Copilot]
+    Copilot --> Fallback[Deterministic fallback]
+    Copilot -. explicit enablement .-> Providers[Gemini or OpenAI]
+
+    PaySim[Local PaySim CSV] --> Preparation[Validation + chronological preparation]
+    Preparation --> Training[Offline training, calibration, evaluation]
+    Preparation --> BehaviorDB
+    Preparation --> RelationshipDB
+    Training --> Model
+```
+
+The application is a modular monolith: one FastAPI service with explicit internal boundaries and
+one React client. SQLite and versioned model files keep the portfolio demonstration reproducible
+without introducing deployment-heavy infrastructure.
+
+## Dataset & ML
+
+The current training and demonstration dataset is **PaySim**, a public simulator-generated
+mobile-money dataset. It is synthetic and is **not Razorpay production data**.
+
+| Prepared PaySim data | Count |
+|---|---:|
+| Transactions | 6,362,620 |
+| Fraud transactions | 8,213 |
+| Training rows | 4,463,587 |
+| Validation rows | 943,289 |
+| Held-out test rows | 955,744 |
+
+The split uses complete chronological PaySim steps: training steps 1–323, validation steps
+324–377, and held-out test steps 378–743. The test set is loaded only after model and threshold
+selection are frozen.
+
+### Scoring-time feature contract
+
+The model accepts exactly six pre-decision features:
 
 ```text
-backend/                 FastAPI application and typed API contracts
-frontend/                React/Vite/TypeScript analyst UI
-ml/fraudetect_ml/data/   ingestion, enrichment, features, splitting, pipeline
-scripts/                 reproducible data commands
-tests/                   regression, privacy, lifecycle, causality, and provider tests
-docs/                    specification, plan, and decisions
-data/                    ignored raw and prepared datasets
-artifacts/               ignored model/evaluation artifacts
+transaction_type
+amount
+origin_balance_before
+hour_of_day
+log_amount
+amount_to_origin_balance
 ```
 
-## Local setup
+Labels, identifiers, post-event balances, destination balance, absolute simulation step/day,
+balance-error fields, and synthetic device/IP enrichment are excluded by construction.
 
-Prerequisites: Python 3.11+ and Node.js 20+.
+### Selected model
+
+- **Model:** class-weighted `HistGradientBoostingClassifier`
+- **Calibration:** chronological sigmoid calibration
+- **Operating mode:** validation-selected `BALANCED`
+- **Default threshold:** `0.4002576812593272`
+- **Selection rule:** highest validation BALANCED-policy F1, with PR-AUC and ROC-AUC only as
+  tie-breakers
+
+The serialized pipeline is frozen so analyst decisions, case updates, and Copilot output cannot
+change its features, probability, calibration, or thresholds. Runtime performs inference only; it
+does not retrain or learn from case dispositions.
+
+### Held-out PaySim evaluation
+
+| Metric | Result |
+|---|---:|
+| Precision | **95.38%** |
+| Recall | **82.89%** |
+| F1 | **88.70%** |
+| PR-AUC | **0.971447** |
+| ROC-AUC | **0.999845** |
+| False positives | 161 |
+| False negatives | 686 |
+
+These are results from the synthetic PaySim chronological held-out period. They are not Razorpay
+production metrics and should not be generalized to live merchant traffic. See
+[`docs/evaluation.md`](docs/evaluation.md) for candidate comparisons, review-capacity results, and
+temporal-drift context.
+
+## Causal / Temporal Safety
+
+> ### `historical.step < current.step`
+>
+> Behavioral and relationship intelligence can use only events from an earlier PaySim step.
+> Same-step and future events are excluded from the current transaction's context.
+
+Online SQLite queries include the strict step predicate. Offline generators evaluate all events in
+a step before adding that step to historical state. Tests confirm that mutating same-step or future
+events cannot change an earlier context.
+
+This boundary prevents investigation-time history from silently becoming future leakage. Historical
+aggregates are not part of the frozen six-feature ML model.
+
+## Behavioral Intelligence
+
+For a referenced PaySim transaction, the behavioral provider compares the event with earlier
+transactions from the same internal origin and returns identifier-free aggregates:
+
+- Previous transaction count and total amount
+- Average, median, and maximum prior amount
+- Current amount versus prior average, median, and maximum
+- Empirical percentile within prior amounts
+- Whether the current amount exceeds the prior maximum
+- Activity in the previous 1, 6, and 24 PaySim steps
+- Steps since the previous transaction
+- Prior count for the current transaction type
+- Whether that type is new in the available origin history
+
+If no eligible earlier activity exists, the API returns zero counts, absent comparisons, and an
+explicit availability explanation. It does not invent a baseline or describe the transaction as
+suspicious merely because history is missing.
+
+## Relationship Intelligence
+
+The relationship provider calculates three factual views:
+
+- **Direct pair:** earlier interactions between the same origin and destination
+- **Origin network:** earlier transaction count and unique destinations for the origin
+- **Destination network:** earlier transaction count and unique origins for the destination
+
+Where pair history exists, the contract supports prior counts, amount statistics and ratios,
+historical percentile, prior maximum comparison, time since the previous interaction, and a limited
+baseline indicator.
+
+The current prepared PaySim dataset contains **zero repeated exact origin-destination pairs**.
+Genuine PaySim cases therefore report a first-observed direct pair, while origin or destination
+network context may still be non-zero. The system does not fabricate repeated relationships,
+shared identities, hidden connections, or device/IP risk.
+
+## Investigation Workspace
+
+The responsive analyst workspace presents:
+
+- System readiness and aggregate workflow metrics
+- A filterable investigation queue
+- Clearly separated ML risk, workflow priority, status, and human disposition
+- Fraud probability, active threshold, and simulated policy recommendation
+- Deterministic evidence with severity and stable evidence IDs
+- Behavioral and relationship context with honest unavailable states
+- A deterministic at-a-glance Investigation Summary
+- Optional Copilot output with visible real-provider/fallback provenance
+- Analyst notes and server-enforced lifecycle actions
+- An append-only chronological decision trace
+- Recorded investigation limitations
+
+The supported lifecycle is:
+
+```text
+OPEN → IN_REVIEW → ESCALATED → CLOSED
+                 └→ CLEARED   → CLOSED
+```
+
+Invalid or repeated transitions are rejected. Closed cases cannot accept new notes, Copilot output,
+or lifecycle changes. The analyst disposition is never fed back into the model as ground truth.
+
+## Copilot / AI Safety
+
+Gemini and OpenAI are optional server-side providers. The core fraud-risk engine, evidence,
+historical intelligence, case workflow, and fallback require no API key.
+
+The Copilot boundary provides:
+
+- Explicit provider enablement; a credential alone cannot activate external generation
+- A positive-selection `SanitizedInvestigationContext`
+- No transaction reference, origin/destination identifier, or raw history in provider context
+- Structured JSON output through the provider SDK
+- Full local `InvestigationReport` validation
+- Evidence-ID and factual grounding checks
+- Rejection of invented identities, histories, percentages, fraud claims, and irreversible actions
+- Bounded failure categories without raw provider diagnostics
+- An explicitly labeled deterministic fallback for every controlled failure path
+
+Copilot cannot modify probability, risk level, threshold, workflow priority, status, disposition, or
+the frozen model. The human analyst remains authoritative.
+
+The Gemini adapter and simulated provider paths are tested. A minimal live Gemini call confirmed
+credential and model reachability, but a complete real-provider investigation report has **not yet
+been produced successfully end to end**. Deterministic fallback is the verified default and is not
+presented as LLM-generated output.
+
+## Demo Showcase
+
+The isolated showcase selects genuine prepared PaySim rows without consulting fraud labels and
+copies only the causal history needed for three presentation scenarios.
+
+| Scenario | What it demonstrates |
+|---|---|
+| **Strong Investigation** | HIGH ML risk, CRITICAL workflow priority, non-zero behavioral and origin/destination network context, deterministic evidence, saved fallback brief, analyst review, and audit events. |
+| **Limited Context** | MEDIUM ML risk on an early PaySim event, no eligible history, explicit unavailable context, and no fabricated intelligence. |
+| **Lower-Risk Resolution** | LOW ML risk with non-zero historical/network context, independent workflow priority, human clearance, and an audit timeline. |
+
+Scenario selection and intelligence are reproducible. Normal application case IDs and timestamps are
+generated when the showcase database is created. The scenario names and internal PaySim references
+do not enter public case payloads.
+
+## Normal vs Showcase Mode
+
+| | Normal PaySim mode | Showcase mode |
+|---|---|---|
+| Purpose | Local development and full-index testing | Curated portfolio presentation |
+| History | Full prepared PaySim indexes | Minimal isolated history subsets |
+| Cases | Normal local case database | Isolated three-case database |
+| Case creation | Any valid prepared PaySim reference | Primarily the three curated scenarios |
+| Public deployment | Too large for the initial showcase | Intended first deployment mode |
+
+### Local prerequisites
+
+Python 3.11+ and Node.js 20+ are required. Install the tracked application and development
+dependencies without adding any dataset or model artifact to Git:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,ml]"
 cp .env.example .env
+cd frontend && npm install && cd ..
 ```
 
-To enable the optional real OpenAI provider, install the additional server dependency:
+The raw PaySim CSV, prepared splits, model bundle, and SQLite indexes are intentionally not bundled
+with a clone. Follow [`docs/data.md`](docs/data.md) to prepare them, or follow
+[`docs/demo-guide.md`](docs/demo-guide.md) when the required local artifacts are already available.
 
-```bash
-.venv/bin/python -m pip install -e ".[dev,ml,llm]"
-```
-
-Generate a small local dataset and prepare it:
-
-```bash
-.venv/bin/python scripts/generate_demo_data.py
-.venv/bin/python scripts/prepare_data.py \
-  --input data/raw/demo_transactions.csv \
-  --source-kind generated_demo_only
-```
-
-For genuine PaySim evaluation, place the downloaded CSV at exactly `data/raw/paysim.csv` and run:
-
-```bash
-.venv/bin/python scripts/prepare_data.py
-```
-
-The preparation command validates the original PaySim schema and writes `train.csv`, `validation.csv`, `test.csv`, and `manifest.json` under `data/processed/`. The manifest records the source SHA-256, provenance, exact row/fraud/step counts and fractions, feature contract, complete-step boundaries, and held-out-test policy.
-
-The genuine PaySim file is not bundled or downloaded automatically. Its source terms apply independently of this repository's MIT-licensed code. Do not commit or redistribute the raw dataset here.
-
-Start the API:
+Start normal mode:
 
 ```bash
 make normal
 ```
 
-Use normal mode for everyday development, full-index PaySim case creation, and manual testing.
-API documentation is available at `http://localhost:8000/docs`.
-
-After training a fresh model bundle, generate its training-only evidence profile with:
+Generate the showcase once, then start it:
 
 ```bash
-.venv/bin/python scripts/build_reference_profile.py
+make demo-cases
+make demo
 ```
 
-The profile records deterministic training-reference distributions and global permutation importance without storing raw training rows. See [docs/explainability.md](docs/explainability.md).
+The generator refuses to overwrite an existing showcase unless replacement is explicitly forced.
+Switching modes changes database configuration without replacing the normal case store.
 
-Build the ignored, label-free behavioral history index after preparing genuine PaySim:
-
-```bash
-.venv/bin/python scripts/build_behavior_history.py
-```
-
-This performs one chunked pass over prepared splits and enables indexed, causal investigation-time lookup without per-request full-dataset scans. See [docs/behavioral-intelligence.md](docs/behavioral-intelligence.md).
-
-Build the separate ignored, label-free relationship index:
-
-```bash
-.venv/bin/python scripts/build_relationship_history.py
-```
-
-It stores only the internal fields needed for indexed relationship aggregation, never loads fraud labels, and enforces `historical.step < current.step` at lookup. See [docs/relationship-intelligence.md](docs/relationship-intelligence.md).
-
-Start the frontend in another terminal:
+### Local frontend
 
 ```bash
 cd frontend
@@ -133,43 +381,131 @@ npm install
 npm run dev
 ```
 
-The development server proxies `/api` to `http://127.0.0.1:8000`. Set `VITE_API_BASE_URL` at build time only when the deployed API is hosted separately.
+The Vite development server proxies `/api` to the local FastAPI service. Full setup and presentation
+steps are documented in [`docs/demo-guide.md`](docs/demo-guide.md).
 
-## Showcase deployment
+## Product Preview
 
-The first public deployment uses one Render web service for the compiled frontend and FastAPI API,
-plus one persistent disk for the writable three-case showcase store. The frozen model and minimal
-showcase history databases are supplied as a checksum-verified private build artifact; they remain
-ignored and are never committed. Raw/processed PaySim data and the full history indexes are not
-deployed. See [docs/deployment.md](docs/deployment.md) for artifact packaging, Render variables,
-build/start commands, persistence behavior, and limitations.
+No product screenshots are currently tracked in the repository, and this README intentionally uses
+no fabricated mockups or stock imagery.
 
-To populate a self-contained local showcase queue from deterministic genuine PaySim selections,
-first build the full behavioral and relationship indexes, then run:
+After the final public deployment, the most useful screenshots to add are:
 
-```bash
-make demo-cases
+1. Investigation dashboard and queue
+2. Strong Investigation risk, evidence, and summary
+3. Behavioral and Relationship Intelligence panels
+4. Analyst workflow and audit timeline
+5. Limited Context unavailable-history state
+6. Real-provider/fallback Copilot provenance panel
+
+## Security & Privacy
+
+| Protection | Current behavior |
+|---|---|
+| Secrets | `.env` is ignored; keys are server-side and excluded from tracked configuration. |
+| Dataset | Raw and processed PaySim data are ignored and absent from the deployment image. |
+| Case privacy | Transaction references and internal origin/destination keys are not stored in case snapshots. |
+| Historical privacy | Public responses return bounded aggregates, not raw behavioral or relationship rows. |
+| Labels | Individual PaySim fraud labels are not stored in history indexes or exposed in public cases. |
+| Provider boundary | Copilot receives allowlisted fields and safe aggregate evidence only. |
+| Error handling | Validation and provider failures return sanitized messages and bounded categories. |
+| Runtime artifacts | Private archive download requires HTTPS and configured SHA-256 verification. |
+| Archive installation | Redirects, unsafe paths, duplicates, directories, encryption, unsupported compression, unexpected files, and oversized archives are rejected. |
+| Persistent cases | The showcase seed initializes storage only when the persistent case database is absent. |
+| Audit events | Server-generated events participate in the recorded operation; SQLite triggers reject UPDATE and DELETE. |
+
+These are portfolio safeguards, not a substitute for production authentication, authorization,
+tenancy, retention, encryption governance, or infrastructure security controls.
+
+## Deployment
+
+> **Deployment configuration is prepared, but the public deployment has not yet been completed.**
+
+**🚀 Live Demo: Coming soon**
+
+The prepared Render architecture uses:
+
+- One FastAPI/Uvicorn web-service instance
+- `0.0.0.0:$PORT` production binding without reload mode
+- Compiled React frontend served by FastAPI on the same public origin
+- `/api/v1/health` and safe component readiness endpoints
+- One persistent disk for the writable showcase case store
+- A checksum-verified private runtime bundle containing the frozen model and small showcase indexes
+- No raw PaySim CSV or full history indexes
+- Deterministic Copilot fallback enabled by default; no Gemini key required
+
+The runtime installer verifies HTTPS transport, archive SHA-256, size limits, member metadata, an
+exact file allowlist, expected SQLite schemas, and the three-case seed before startup. Existing
+persistent case storage is not silently overwritten.
+
+See [`docs/deployment.md`](docs/deployment.md) for the Render Blueprint, private artifact workflow,
+required configuration, and remaining deployment steps.
+
+## Project Structure
+
+```text
+backend/
+├── app/api/routes/          Versioned FastAPI endpoints
+├── app/schemas/             Typed public contracts
+├── app/services/            Risk, evidence, intelligence, case, audit, and Copilot services
+└── app/deployment.py        Same-origin production application
+frontend/
+├── src/                     React/TypeScript analyst workspace
+└── package.json             Frontend build configuration
+ml/fraudetect_ml/
+├── data/                    PaySim contracts, preparation, enrichment, and history indexes
+└── modeling/                Candidates, calibration, thresholds, evaluation, and artifacts
+scripts/                     Reproducible data, training, showcase, and runtime commands
+tests/                       Regression, privacy, causality, lifecycle, provider, and deployment tests
+docs/                        Technical design and operating documentation
+Makefile                     Local normal/showcase workflows
+pyproject.toml               Python package and development dependencies
+requirements-deploy.txt      Pinned deployment runtime
+render.yaml                  Render showcase Blueprint
 ```
 
-The command selects three presentation scenarios without using labels, then creates an isolated
-case store plus minimal PaySim-backed behavioral and relationship index subsets under ignored
-`artifacts/demo/`. It refuses to overwrite an existing demo. Only use
-`.venv/bin/python scripts/seed_demo_cases.py --force` when replacement is intentional. Launch the
-API against the isolated showcase databases with `make demo`; the exact sequence is in
-[docs/demo-guide.md](docs/demo-guide.md). Transaction references and raw identities remain internal
-to the ignored local indexes and never enter public case snapshots. Use showcase mode for the
-curated three-case presentation rather than general case creation.
+Raw datasets, generated splits, serialized models, SQLite databases, runtime archives,
+dependencies, and build output are intentionally not part of the tracked tree.
 
-## Environment variables
+## Technology Stack
 
-See `.env.example`. The Copilot defaults to deterministic fallback mode. Real mode requires
-`FRAUDETECT_LLM_ENABLED=true`, an explicit `FRAUDETECT_LLM_PROVIDER` selection, and the matching
-server-side `OPENAI_API_KEY` or `GEMINI_API_KEY`. A key alone never enables a provider. No API key is
-needed for development, testing, prediction, evidence, behavior, or fallback reports. Provider
-secrets are never sent to the frontend. Readiness reports configuration state only and does not
-call either external provider.
+| Layer | Technologies |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | Python, FastAPI, Pydantic, Uvicorn |
+| ML | scikit-learn, HistGradientBoosting, sigmoid calibration, pandas, NumPy, joblib |
+| Data & persistence | PaySim, SQLite |
+| Optional AI | Google Gen AI Gemini, OpenAI Responses API, deterministic fallback |
+| Testing | Pytest, Ruff, TypeScript compiler, Vite production build |
+| Deployment | Render Blueprint, production Uvicorn, same-origin static frontend |
 
-## Testing
+## Testing & Verification
+
+Latest verified repository state:
+
+| Check | Result |
+|---|---|
+| Full Python suite | **133 passed** |
+| Deployment tests | **Passed** |
+| Ruff | **Passed** |
+| `git diff --check` | **Passed** |
+| Frontend production build | **Passed** |
+| Production startup | **Passed** |
+| Health endpoint | **HTTP 200** |
+| Showcase readiness | **All seven components ready** |
+| Showcase queue | **Exactly three curated cases verified** |
+| Frozen model SHA-256 | `9664e4f43e48dcf86f0dc4e2293092a55af97c92d9f9b0b3ff93cd885ac99e92` |
+
+Tests cover temporal splitting, training-only preprocessing, frozen scoring behavior, evidence
+determinism, causal history, identifier boundaries, Copilot grounding, safe provider failure,
+execution provenance, case lifecycle, closure protection, snapshot immutability, append-only audit
+events, legacy database compatibility, aggregate metrics, showcase isolation, and runtime archive
+security.
+
+There is currently no automated React component/browser-E2E suite, coverage percentage, load test,
+or public-cloud verification. Provider tests use injected clients and do not make external requests.
+
+Run the local checks with:
 
 ```bash
 .venv/bin/pytest -q
@@ -177,64 +513,69 @@ call either external provider.
 cd frontend && npm run build
 ```
 
-Tests cover the data contract, frozen ML regression behavior, causal intelligence, Copilot grounding, case lifecycle and persistence, priority policy, status validation, and identifier/privacy boundaries.
+## Why This Fits the Razorpay AI Risk Manager Problem
 
-## Technology stack
+Fraudetect AI demonstrates the architecture around a risk decision: calibrated prediction,
+explainable evidence, causal historical context, operational prioritization, human review, safe AI
+assistance, and auditability.
 
-- Python 3.11+, FastAPI, Pydantic, pandas, NumPy, scikit-learn, and joblib
-- SQLite for local behavioral, relationship, case, and audit demonstration stores
-- React, TypeScript, and Vite for the analyst workspace
-- Pytest and Ruff for regression and static verification
-- Optional OpenAI Responses API and Google Gen AI Gemini adapters with Pydantic structured output
+```text
+Current implementation
+PaySim transaction → Fraudetect AI
 
-The Phase 2 baseline is restricted to `transaction_type`, `amount`, `origin_balance_before`, `hour_of_day`, `log_amount`, and `amount_to_origin_balance`. Labels, identifiers, post-event balances, balance-error fields, enrichment, absolute simulation day, and destination balance are rejected from the model matrix by construction.
+Production adaptation
+Razorpay transaction
+→ Razorpay/provider-specific data adapter
+→ reviewed feature and causal-history contract
+→ separately trained and calibrated risk model
+→ Fraudetect AI investigation workflow
+```
 
-## Model evaluation
+No Razorpay production data, API integration, or Razorpay-specific adapter currently exists. A real
+integration would require governed field mapping, production identity/history services, model
+retraining and calibration, authentication, tenancy, monitoring, and payment-policy integration.
 
-Phase 2 compared weighted and unweighted logistic-regression and HistGradientBoosting candidates. Model and threshold selection used training and validation only. The frozen choice was evaluated once on the chronological held-out test set with:
+## Limitations & Roadmap
 
-- precision, recall, and F1;
-- confusion matrix, false positives, and false negatives;
-- actual class prevalence per split;
-- estimated false-positive cost using explicitly labeled manual-review and friction assumptions.
+- PaySim is public synthetic data and cannot establish merchant production performance.
+- There is no live Razorpay integration or production data adapter.
+- Full live Gemini investigation generation is not yet proven end to end.
+- SQLite and a single backend instance are suitable for the showcase, not distributed production.
+- The first public deployment is designed for the isolated three-case showcase rather than the full
+  PaySim history indexes.
+- Production authentication, authorization, tenancy, data governance, monitoring, and streaming
+  infrastructure remain outside the current portfolio scope.
 
-The Phase 2A winner is the training-weighted HistGradientBoosting candidate, selected by validation BALANCED-policy F1. At its frozen threshold, held-out test precision is 95.38%, recall 82.89%, and F1 88.70%. PaySim's test period has a materially higher fraud prevalence than training and validation, so these values must be interpreted with that temporal shift and the dataset's synthetic origin in mind. Full candidate, operating-point, and confusion-matrix results are in [docs/evaluation.md](docs/evaluation.md).
+The immediate next step is to publish the reviewed repository, supply the private runtime bundle to
+Render, deploy the showcase, run public smoke/security checks, and replace the live-demo placeholder
+with the verified URL.
 
-No fabricated or demo-generator metrics are presented as final results.
+## 30-Second Explanation
 
-## Engineering decisions
+> “I built Fraudetect AI as a fraud investigation workspace, not just a classifier. A frozen,
+> calibrated model scores PaySim transactions, then deterministic services add evidence and
+> strictly earlier behavioral and relationship context. An analyst can freeze that intelligence
+> into a case, request an optional grounded Copilot brief, add notes, resolve the case, and retain
+> an append-only timeline. The LLM cannot change the risk score, the product works without an API
+> key, and the human analyst always owns the final decision.”
 
-The rationale for model/LLM separation, PaySim, synthetic enrichment, chronological splitting, the modular monolith, SQLite, and evidence-addressable AI output is documented in [docs/engineering-decisions.md](docs/engineering-decisions.md).
+## Documentation
 
-## Evidence and explainability
-
-`POST /api/v1/risk/predict` returns the frozen model output plus three to five deterministic evidence items. `POST /api/v1/risk/investigate` returns the reusable typed investigation context intended for later LLM summarization. Evidence reports factual associations and reference statistics; it does not claim causality or replace the model decision.
-
-The investigation endpoint accepts either the existing manual transaction fields or an exclusive safe internal `transaction_reference`. Referenced investigations add aggregate `behavioral_context`, `relationship_context`, and separate typed relationship evidence; the reference and raw PaySim identities are never returned. Manual investigations do not fabricate identity and explicitly report unavailable history. Prediction requests remain history-free and inexpensive.
-
-`POST /api/v1/risk/investigate/copilot` returns a typed advisory report containing a summary, frozen risk assessment, evidence-linked signals, behavioral and relationship analysis, uncertainties, reversible next steps, mode metadata, safe execution metadata, safe relationship aggregates, and synthetic-data disclosure. The allowlisted provider payload excludes identifiers and raw history. See [docs/llm-copilot.md](docs/llm-copilot.md).
-
-The case API provides `POST/GET /api/v1/cases`, `GET/PATCH /api/v1/cases/{case_id}`, and `POST /api/v1/cases/{case_id}/copilot`. Case priority is a transparent workflow ordering separate from ML risk; analyst disposition is never treated as model ground truth. Case storage contains only a positively selected immutable snapshot and minimal workflow metadata. Case detail includes a decision trace assembled only from stored creation, Copilot-generation, and status-transition timestamps.
-
-`GET /api/v1/system/readiness` exposes safe ready/unavailable states for the frozen model, deterministic evidence, reference profile, behavioral and relationship indexes, case store, and Copilot mode. It never exposes configured paths, credentials, transaction identities, or raw history. If the LLM is disabled or unavailable, it explicitly reports that deterministic fallback remains ready.
-
-`GET /api/v1/system/metrics` returns aggregate case totals, active workload, status, workflow-priority, disposition, and saved Copilot-mode counts. It returns no case IDs, notes, transaction identifiers, raw history, paths, labels, or credentials. `CRITICAL` in this response is a workflow priority and is never an ML risk level.
-
-## Limitations
-
-- PaySim is synthetic and cannot establish real merchant performance.
-- Device/IP enrichment demonstrates relationship mechanics, is applied after temporal splitting with fixed configured bucket counts, and is excluded from the Phase 2 model.
-- The local deterministic fallback is not an LLM, and real-provider quality depends on external model access and configuration.
-- Behavioral histories can be sparse, and PaySim's account structure limits the richness of relationship intelligence.
-- Real-provider quality, latency, availability, and cost depend on the selected provider, model, and account configuration.
-- Batch CSV preparation is appropriate for the buildathon but not production streaming scale.
-- Recommendations are simulated and never execute payment actions.
-- Local SQLite case storage has no production authentication, authorization, tenancy, retention, or distributed audit controls.
-
-## Implementation history
-
-See [docs/implementation-plan.md](docs/implementation-plan.md). The repository intentionally stops at final validation; production authentication, distributed storage, streaming, and deployment infrastructure are outside this portfolio build.
+| Guide | Purpose |
+|---|---|
+| [`docs/project-spec.md`](docs/project-spec.md) | Product scope, architecture, and explicit non-goals |
+| [`docs/evaluation.md`](docs/evaluation.md) | Model candidates, thresholds, held-out metrics, and drift |
+| [`docs/explainability.md`](docs/explainability.md) | Evidence methodology and reference-profile boundaries |
+| [`docs/behavioral-intelligence.md`](docs/behavioral-intelligence.md) | Behavioral aggregates and causal lookup |
+| [`docs/relationship-intelligence.md`](docs/relationship-intelligence.md) | Pair/network context and PaySim topology limits |
+| [`docs/llm-copilot.md`](docs/llm-copilot.md) | Sanitization, structured output, grounding, and fallback |
+| [`docs/analyst-workflow.md`](docs/analyst-workflow.md) | Case lifecycle, priority, disposition, and closure |
+| [`docs/auditability.md`](docs/auditability.md) | Append-only events, ordering, migration, and metrics |
+| [`docs/demo-guide.md`](docs/demo-guide.md) | Normal/showcase operation and presentation narrative |
+| [`docs/deployment.md`](docs/deployment.md) | Render architecture and private runtime artifacts |
+| [`docs/engineering-decisions.md`](docs/engineering-decisions.md) | Key implementation trade-offs |
 
 ## License
 
-Source code is available under the [MIT License](LICENSE). Dataset licensing and attribution remain governed by their original sources.
+The project source is available under the [MIT License](LICENSE). PaySim remains governed by its own
+source terms and is not redistributed in this repository.
