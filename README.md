@@ -95,9 +95,10 @@ The genuine PaySim file is not bundled or downloaded automatically. Its source t
 Start the API:
 
 ```bash
-.venv/bin/uvicorn backend.app.main:app --reload --port 8000
+make normal
 ```
 
+Use normal mode for everyday development, full-index PaySim case creation, and manual testing.
 API documentation is available at `http://localhost:8000/docs`.
 
 After training a fresh model bundle, generate its training-only evidence profile with:
@@ -138,16 +139,17 @@ To populate a self-contained local showcase queue from deterministic genuine Pay
 first build the full behavioral and relationship indexes, then run:
 
 ```bash
-make demo
+make demo-cases
 ```
 
 The command selects three presentation scenarios without using labels, then creates an isolated
 case store plus minimal PaySim-backed behavioral and relationship index subsets under ignored
 `artifacts/demo/`. It refuses to overwrite an existing demo. Only use
 `.venv/bin/python scripts/seed_demo_cases.py --force` when replacement is intentional. Launch the
-API against the demo paths printed by the command; the exact sequence is in
+API against the isolated showcase databases with `make demo`; the exact sequence is in
 [docs/demo-guide.md](docs/demo-guide.md). Transaction references and raw identities remain internal
-to the ignored local indexes and never enter public case snapshots.
+to the ignored local indexes and never enter public case snapshots. Use showcase mode for the
+curated three-case presentation rather than general case creation.
 
 ## Environment variables
 

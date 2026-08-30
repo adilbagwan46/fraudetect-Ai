@@ -20,7 +20,7 @@ The frozen model bundle must also be available under `artifacts/models/`.
 ## Generate the showcase
 
 ```bash
-make demo
+make demo-cases
 ```
 
 The command deterministically selects three existing PaySim transactions and creates three ignored
@@ -49,11 +49,13 @@ The generator does not overwrite an existing showcase. Replacement requires expl
 Terminal 1:
 
 ```bash
-FRAUDETECT_CASE_DATABASE=artifacts/demo/cases.sqlite \
-FRAUDETECT_BEHAVIORAL_HISTORY_DB=artifacts/demo/behavior.sqlite \
-FRAUDETECT_RELATIONSHIP_HISTORY_DB=artifacts/demo/relationship.sqlite \
-.venv/bin/uvicorn backend.app.main:app --port 8000
+make demo
 ```
+
+To switch back to the normal case store and full prepared PaySim indexes, stop the showcase backend
+and run `make normal`. Both commands keep the API on port 8000, so the frontend URL does not change.
+Use `make normal` for regular testing and full-index case creation; use `make demo` for the curated
+three-case presentation.
 
 Terminal 2:
 

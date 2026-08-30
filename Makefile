@@ -1,7 +1,7 @@
 PYTHON ?= python3.12
 DEMO_ROOT ?= artifacts/demo
 
-.PHONY: install install-llm api test lint demo demo-data demo-cases prepare-data train-models reference-profile behavior-history relationship-history frontend-install frontend-dev
+.PHONY: install install-llm api normal test lint demo demo-data demo-cases prepare-data train-models reference-profile behavior-history relationship-history frontend-install frontend-dev
 
 install:
 	$(PYTHON) -m venv .venv
@@ -12,6 +12,12 @@ install-llm:
 
 api:
 	.venv/bin/uvicorn backend.app.main:app --reload --port 8000
+
+normal:
+	env -u FRAUDETECT_CASE_DATABASE \
+		-u FRAUDETECT_BEHAVIORAL_HISTORY_DB \
+		-u FRAUDETECT_RELATIONSHIP_HISTORY_DB \
+		.venv/bin/uvicorn backend.app.main:app --reload --port 8000
 
 test:
 	.venv/bin/pytest -q
@@ -25,7 +31,15 @@ demo-data:
 demo-cases:
 	.venv/bin/python scripts/seed_demo_cases.py --output-dir "$(DEMO_ROOT)"
 
-demo: demo-cases
+demo:
+	@test -f "$(DEMO_ROOT)/cases.sqlite" \
+		-a -f "$(DEMO_ROOT)/behavior.sqlite" \
+		-a -f "$(DEMO_ROOT)/relationship.sqlite" \
+		|| { echo "Showcase databases are unavailable; run 'make demo-cases' first."; exit 1; }
+	FRAUDETECT_CASE_DATABASE="$(DEMO_ROOT)/cases.sqlite" \
+	FRAUDETECT_BEHAVIORAL_HISTORY_DB="$(DEMO_ROOT)/behavior.sqlite" \
+	FRAUDETECT_RELATIONSHIP_HISTORY_DB="$(DEMO_ROOT)/relationship.sqlite" \
+		.venv/bin/uvicorn backend.app.main:app --reload --port 8000
 
 prepare-data:
 	.venv/bin/python scripts/prepare_data.py --input data/raw/paysim.csv
