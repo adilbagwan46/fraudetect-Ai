@@ -135,6 +135,15 @@ npm run dev
 
 The development server proxies `/api` to `http://127.0.0.1:8000`. Set `VITE_API_BASE_URL` at build time only when the deployed API is hosted separately.
 
+## Showcase deployment
+
+The first public deployment uses one Render web service for the compiled frontend and FastAPI API,
+plus one persistent disk for the writable three-case showcase store. The frozen model and minimal
+showcase history databases are supplied as a checksum-verified private build artifact; they remain
+ignored and are never committed. Raw/processed PaySim data and the full history indexes are not
+deployed. See [docs/deployment.md](docs/deployment.md) for artifact packaging, Render variables,
+build/start commands, persistence behavior, and limitations.
+
 To populate a self-contained local showcase queue from deterministic genuine PaySim selections,
 first build the full behavioral and relationship indexes, then run:
 

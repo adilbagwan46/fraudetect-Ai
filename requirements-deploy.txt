@@ -1,0 +1,11 @@
+fastapi==0.141.1
+google-genai==2.20.0
+joblib==1.5.3
+networkx==3.6.1
+numpy==2.5.2
+openai==2.54.0
+pandas==2.3.3
+pydantic==2.13.4
+scikit-learn==1.9.0
+scipy==1.18.1
+uvicorn[standard]==0.52.4
