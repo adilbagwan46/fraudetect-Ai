@@ -134,13 +134,20 @@ npm run dev
 
 The development server proxies `/api` to `http://127.0.0.1:8000`. Set `VITE_API_BASE_URL` at build time only when the deployed API is hosted separately.
 
-To populate a self-contained local showcase queue without copying PaySim data, run:
+To populate a self-contained local showcase queue from deterministic genuine PaySim selections,
+first build the full behavioral and relationship indexes, then run:
 
 ```bash
 make demo
 ```
 
-The command creates an isolated case store plus synthetic behavioral and relationship indexes under ignored `artifacts/demo/`. It refuses to overwrite an existing demo. Only use `.venv/bin/python scripts/seed_demo_cases.py --force` when replacement is intentional. Launch the API against the demo paths printed by the command; the exact sequence is in [docs/demo-guide.md](docs/demo-guide.md).
+The command selects three presentation scenarios without using labels, then creates an isolated
+case store plus minimal PaySim-backed behavioral and relationship index subsets under ignored
+`artifacts/demo/`. It refuses to overwrite an existing demo. Only use
+`.venv/bin/python scripts/seed_demo_cases.py --force` when replacement is intentional. Launch the
+API against the demo paths printed by the command; the exact sequence is in
+[docs/demo-guide.md](docs/demo-guide.md). Transaction references and raw identities remain internal
+to the ignored local indexes and never enter public case snapshots.
 
 ## Environment variables
 

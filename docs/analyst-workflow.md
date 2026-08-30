@@ -60,21 +60,28 @@ The default database is `artifacts/cases/cases.sqlite` and is ignored by Git. SQ
 
 ## Deterministic showcase
 
-With the frozen model bundle available, generate five local showcase cases:
+With the frozen model bundle and full genuine PaySim history indexes available, generate three
+local showcase cases:
 
 ```bash
 make demo-cases
 ```
 
-The command creates ignored files under `artifacts/demo/` and prints the three environment variables needed to run the API against them. It demonstrates:
+The command deterministically selects existing prepared PaySim transactions, copies only their
+required strictly-prior history into ignored subset indexes under `artifacts/demo/`, and prints the
+three environment variables needed to run the API against them. It demonstrates:
 
-- low ML risk;
-- high ML risk with `CRITICAL` case priority;
-- strong behavioral amount deviation from strictly earlier synthetic events;
-- a first-observed relationship with prior origin network activity;
-- manual input with explicitly unavailable behavioral and relationship history.
+- a High-risk, `CRITICAL`-priority investigation with genuine earlier behavior and both origin and
+  destination network context;
+- a Medium-risk transaction from the earliest PaySim step with honestly unavailable history;
+- a Low-risk analyst-cleared case with two earlier behavioral events and broader destination
+  network context.
 
-The high-risk case also receives a clearly labeled deterministic Copilot fallback report. The demo indexes use invented local keys and contain no PaySim rows or labels. Existing artifacts are not overwritten unless `--force` is passed directly to the script.
+No eligible PaySim transaction has an earlier repeat of the exact same origin-destination pair, so
+the showcase truthfully presents first-observed pairs with network context rather than fabricating
+pair history. The strong case receives a clearly labeled deterministic Copilot fallback report.
+The subset indexes contain no fraud labels, public responses contain no identities, and existing
+artifacts are not overwritten unless `--force` is passed directly to the script.
 
 ## Analyst workspace
 
