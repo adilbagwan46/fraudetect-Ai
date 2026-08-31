@@ -23,7 +23,7 @@ service instance and can reset after a restart, spin-down, or redeploy.
 The public deployment is a bounded portfolio demonstration. `make normal` remains the full local
 PaySim workflow and is not changed by this deployment configuration.
 
-## Private runtime bundle
+## Runtime bundle
 
 The ignored local artifacts are packaged outside the repository:
 
@@ -39,8 +39,9 @@ The package command validates and includes only:
 - `artifacts/demo/cases.sqlite` as the initial three-case seed.
 
 It rejects a missing model file, an unexpected database schema, or a case seed that does not
-contain exactly three cases. The generated ZIP is deterministic for unchanged inputs. Keep it
-private and upload it to private HTTPS object storage. Do not attach it to a public release.
+contain exactly three cases. The generated ZIP is deterministic for unchanged inputs. The current
+showcase publishes this bounded bundle as a GitHub Release asset; it contains no raw PaySim CSV,
+full history index, credentials, or `.env` content. Private HTTPS object storage remains supported.
 
 Record the SHA-256 printed by the package command. Render downloads the archive during its build,
 limits its size, verifies the checksum before extraction, rejects unexpected archive members, and
@@ -51,7 +52,7 @@ Render environment settings, never in Git.
 
 Create a Blueprint from `render.yaml`. During the initial Blueprint flow, enter:
 
-- `FRAUDETECT_RUNTIME_ARTIFACT_URL`: the private HTTPS download URL;
+- `FRAUDETECT_RUNTIME_ARTIFACT_URL`: the HTTPS download URL;
 - `FRAUDETECT_RUNTIME_ARTIFACT_SHA256`: the exact SHA-256 printed by the package command.
 
 If the object host requires bearer authentication, add
@@ -99,7 +100,7 @@ or backend URL embedded in JavaScript.
 
 ## Rebuild and recovery
 
-For a new artifact version, regenerate the private ZIP, upload it, update the URL and SHA-256 in
+For a new artifact version, regenerate the ZIP, upload it, update the URL and SHA-256 in
 Render, and redeploy. A Free Render restart, spin-down, or redeploy can discard the ephemeral case
 store; startup then restores the original three curated cases from the verified seed. This reset is
 intentional for the public showcase and does not affect the normal local case database.
