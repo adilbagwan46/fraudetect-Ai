@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](pyproject.toml)
 [![React](https://img.shields.io/badge/React-TypeScript-3178C6?logo=react&logoColor=white)](frontend/package.json)
-[![Tests](https://img.shields.io/badge/pytest-133%20passed-2EA44F?logo=pytest&logoColor=white)](#testing--verification)
+[![Tests](https://img.shields.io/badge/pytest-passing-2EA44F?logo=pytest&logoColor=white)](#testing--verification)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **ML detects risk. Deterministic intelligence explains the context. Humans retain control.**

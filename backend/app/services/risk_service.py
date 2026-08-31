@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,7 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise ModelUnavailableError(f"Unreadable model artifact: {path.name}") from error
 
 
+@lru_cache(maxsize=8)
 def load_active_bundle(
     artifact_root: Path,
     *,

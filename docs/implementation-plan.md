@@ -139,7 +139,7 @@ Four approved candidates were compared on genuine prepared PaySim: weighted/unwe
 **Exit condition:** a real provider can be enabled safely without weakening deterministic fraud
 intelligence, privacy, grounding, case, lifecycle, audit, or offline-fallback contracts.
 
-## Phase 10 — Final validation and portfolio readiness (current)
+## Phase 10 — Final validation and portfolio readiness (complete)
 
 - Validate the real-provider path only when it is explicitly enabled with a local server-side credential; never fabricate an external request.
 - Exercise the isolated demo, API lifecycle, closed-case protections, browser workflow, responsive layout, and console behavior.
@@ -147,7 +147,7 @@ intelligence, privacy, grounding, case, lifecycle, audit, or offline-fallback co
 - Correct only genuine validation defects and remove materially stale portfolio documentation.
 - Run the complete backend, static, formatting, and frontend production verification suite.
 
-**Exit condition:** the portfolio build is technically accurate, reproducible locally, honest about its synthetic-data and local-storage limitations, and remains uncommitted pending review.
+**Exit condition:** the portfolio build is technically accurate, reproducible locally, and honest about its synthetic-data and local-storage limitations.
 
 ## Major implementation choices
 

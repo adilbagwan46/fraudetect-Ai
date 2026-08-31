@@ -9,6 +9,7 @@ from sklearn.dummy import DummyClassifier
 
 from backend.app.core.config import get_settings
 from backend.app.main import app
+from backend.app.services import risk_service
 from ml.fraudetect_ml.data.contracts import ML_FEATURE_COLUMNS
 from tests.helpers import reference_profile
 
@@ -136,8 +137,18 @@ def test_risk_api_validates_scoring_time_inputs() -> None:
 def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeypatch) -> None:
     artifact_root = tmp_path / "models"
     create_test_bundle(artifact_root)
+    actual_joblib_load = risk_service.joblib.load
+    model_loads = 0
+
+    def counted_joblib_load(path: Path):
+        nonlocal model_loads
+        model_loads += 1
+        return actual_joblib_load(path)
+
+    monkeypatch.setattr(risk_service.joblib, "load", counted_joblib_load)
     monkeypatch.setenv("FRAUDETECT_MODEL_ARTIFACT_ROOT", str(artifact_root))
     get_settings.cache_clear()
+    risk_service.load_active_bundle.cache_clear()
     try:
         client = TestClient(app)
         status = client.get("/api/v1/model/status")
@@ -179,7 +190,9 @@ def test_model_endpoints_load_bundle_and_derive_features(tmp_path: Path, monkeyp
             "candidate_comparison",
             "operating_points",
         }
+        assert model_loads == 1
     finally:
+        risk_service.load_active_bundle.cache_clear()
         get_settings.cache_clear()
 
 
