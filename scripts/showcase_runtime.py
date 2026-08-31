@@ -10,6 +10,7 @@ import stat
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -37,11 +38,28 @@ class ShowcaseRuntimeError(RuntimeError):
     """A safe deployment-artifact error that contains no credential or URL."""
 
 
-class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Keep an optional bearer token on the configured artifact origin only."""
+def _https_origin(url: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port or 443
+    except ValueError:
+        return None
+    if parsed.scheme.lower() != "https" or parsed.hostname is None:
+        return None
+    return parsed.scheme.lower(), parsed.hostname, port
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow HTTPS redirects without forwarding bearer tokens across origins."""
 
     def redirect_request(self, request, fp, code, msg, headers, newurl):  # noqa: ANN001
-        return None
+        target_origin = _https_origin(newurl)
+        if target_origin is None:
+            return None
+        redirected = super().redirect_request(request, fp, code, msg, headers, newurl)
+        if redirected is not None and _https_origin(request.full_url) != target_origin:
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def _active_model_version(root: Path) -> str:
@@ -139,7 +157,7 @@ def _download_runtime_archive(destination: Path) -> None:
     if token:
         request.add_header("Authorization", f"Bearer {token}")
     try:
-        opener = urllib.request.build_opener(_NoRedirectHandler)
+        opener = urllib.request.build_opener(_SafeRedirectHandler)
         with opener.open(request, timeout=120) as response, destination.open("wb") as output:
             total = 0
             while chunk := response.read(1024 * 1024):

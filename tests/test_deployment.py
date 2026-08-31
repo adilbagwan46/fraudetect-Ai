@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import sqlite3
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -12,6 +15,8 @@ from scripts.showcase_runtime import (
     MAX_EXPANDED_BYTES,
     MODEL_FILES,
     ShowcaseRuntimeError,
+    _download_runtime_archive,
+    _SafeRedirectHandler,
     install_runtime,
     package_runtime,
     parse_args,
@@ -19,6 +24,19 @@ from scripts.showcase_runtime import (
     sha256_file,
     validate_runtime,
 )
+
+
+def _redirect(
+    request: urllib.request.Request, target: str
+) -> urllib.request.Request | None:
+    return _SafeRedirectHandler().redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        target,
+    )
 
 
 def _database(path: Path, table: str, rows: int = 1) -> None:
@@ -57,6 +75,68 @@ def test_private_runtime_archive_is_reproducible_and_installable(tmp_path: Path)
     installed = tmp_path / "installed"
     install_runtime(installed, first)
     validate_runtime(installed)
+
+
+def test_public_https_redirect_is_allowed_without_bearer_token() -> None:
+    request = urllib.request.Request("https://github.com/example/release.zip")
+
+    redirected = _redirect(
+        request,
+        "https://objects.githubusercontent.com/release-assets/runtime.zip",
+    )
+
+    assert redirected is not None
+    assert redirected.full_url.startswith("https://objects.githubusercontent.com/")
+    assert redirected.get_header("Authorization") is None
+
+
+def test_http_redirect_is_rejected() -> None:
+    request = urllib.request.Request("https://downloads.example/runtime.zip")
+
+    assert _redirect(request, "http://downloads.example/runtime.zip") is None
+
+
+def test_bearer_token_is_not_forwarded_to_a_different_redirect_origin() -> None:
+    request = urllib.request.Request("https://downloads.example/runtime.zip")
+    request.add_header("Authorization", "Bearer deployment-secret")
+
+    redirected = _redirect(request, "https://storage.example/runtime.zip")
+
+    assert redirected is not None
+    assert redirected.get_header("Authorization") is None
+
+
+def test_download_verifies_checksum_after_response_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"downloaded-runtime-archive"
+    destination = tmp_path / "runtime.zip"
+    monkeypatch.setenv(
+        "FRAUDETECT_RUNTIME_ARTIFACT_URL",
+        "https://downloads.example/runtime.zip",
+    )
+    monkeypatch.setenv(
+        "FRAUDETECT_RUNTIME_ARTIFACT_SHA256",
+        hashlib.sha256(b"different-archive").hexdigest(),
+    )
+    monkeypatch.delenv("FRAUDETECT_RUNTIME_ARTIFACT_TOKEN", raising=False)
+
+    class FakeOpener:
+        def open(self, request, timeout):  # noqa: ANN001
+            assert request.full_url.startswith("https://")
+            assert timeout == 120
+            return io.BytesIO(payload)
+
+    def fake_build_opener(handler):  # noqa: ANN001
+        assert handler is _SafeRedirectHandler
+        return FakeOpener()
+
+    monkeypatch.setattr(urllib.request, "build_opener", fake_build_opener)
+
+    with pytest.raises(ShowcaseRuntimeError, match="checksum does not match"):
+        _download_runtime_archive(destination)
+
+    assert destination.read_bytes() == payload
 
 
 def test_runtime_archive_rejects_unexpected_members(tmp_path: Path) -> None:

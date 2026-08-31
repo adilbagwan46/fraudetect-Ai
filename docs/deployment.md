@@ -56,8 +56,9 @@ Create a Blueprint from `render.yaml`. During the initial Blueprint flow, enter:
 
 If the object host requires bearer authentication, add
 `FRAUDETECT_RUNTIME_ARTIFACT_TOKEN` manually in the service's Environment page. It is optional and
-must not be added to `render.yaml` or `.env.example`. Use a direct object URL: authenticated
-downloads intentionally reject redirects so a bearer token cannot be forwarded to another host.
+must not be added to `render.yaml` or `.env.example`. Public downloads may follow HTTPS redirects,
+including redirects from GitHub Releases. HTTP redirects are rejected, and authenticated downloads
+never forward the bearer token when the redirect origin changes.
 
 The Blueprint configures the Free Render plan, Python 3.12.13 to match the frozen model environment,
 Node 24 for the frontend build, deterministic Copilot fallback, and the three ignored runtime

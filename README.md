@@ -410,7 +410,7 @@ After the final public deployment, the most useful screenshots to add are:
 | Provider boundary | Copilot receives allowlisted fields and safe aggregate evidence only. |
 | Error handling | Validation and provider failures return sanitized messages and bounded categories. |
 | Runtime artifacts | Private archive download requires HTTPS and configured SHA-256 verification. |
-| Archive installation | Redirects, unsafe paths, duplicates, directories, encryption, unsupported compression, unexpected files, and oversized archives are rejected. |
+| Archive installation | HTTPS redirects are allowed without cross-origin bearer-token forwarding; HTTP redirects, unsafe paths, duplicates, directories, encryption, unsupported compression, unexpected files, and oversized archives are rejected. |
 | Showcase cases | The seed initializes an isolated case store only when it is absent; Free Render may reset this ephemeral store when an instance is replaced. |
 | Audit events | Server-generated events participate in the recorded operation; SQLite triggers reject UPDATE and DELETE. |
 
