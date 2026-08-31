@@ -87,7 +87,7 @@ These routes never execute payment actions. Referenced investigation inputs are 
 
 ## Risk and action semantics
 
-Model probability is the estimator output. Risk score is its 0–100 presentation form. Risk level is a configurable LOW/MEDIUM/HIGH band selected after validation analysis. Recommended actions are simulated policy suggestions: normal processing, manual review, or hold for investigation. They do not trigger payment actions.
+Model probability is the estimator output. Risk score is its 0–100 presentation form. Runtime LOW/MEDIUM/HIGH risk bands use validation-selected thresholds stored in the frozen model artifact. `FRAUDETECT_LOW_RISK_MAX` and `FRAUDETECT_HIGH_RISK_MIN` are parsed configuration fields but do not control those frozen scoring bands. Recommended actions are simulated policy suggestions: normal processing, manual review, or hold for investigation. They do not trigger payment actions.
 
 ## Reliability and security
 
@@ -97,7 +97,7 @@ Model probability is the estimator output. Risk score is its 0–100 presentatio
 - Persist evidence snapshots used for an investigation.
 - Mark absent history or graph data explicitly.
 - Treat LLM timeout, provider failure, and malformed output as isolated degradation.
-- Use generated/demo data only; no offensive fraud guidance or live payment integration.
+- Use genuine prepared rows from the public synthetic PaySim dataset for final evaluation and the public showcase; generated fixtures support tests and smoke/demo workflows only. No real merchant or Razorpay data is used, and there is no live payment integration.
 
 ## Explicit non-goals for the buildathon
 

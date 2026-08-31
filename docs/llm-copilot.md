@@ -26,8 +26,9 @@ Frozen ML output + deterministic evidence + causal behavior + relationship conte
 
 The OpenAI adapter follows the official Structured Outputs pattern: the server calls the Responses
 API through `client.responses.parse` with a Pydantic response model. The Gemini adapter uses the
-current `google-genai` SDK and `client.models.generate_content` with the same Pydantic model as its
-response schema. See the [official OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs)
+current `google-genai` SDK and `client.models.generate_content` with a Gemini-compatible simplified
+JSON Schema supplied through `response_json_schema`. The returned structured result is then
+validated locally against the canonical Pydantic `InvestigationReport` model. See the [official OpenAI Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs)
 and [Google Gen AI structured-output documentation](https://googleapis.github.io/python-genai/#pydantic-model-schema-support).
 
 ## Approved context boundary

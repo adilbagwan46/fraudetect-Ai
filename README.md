@@ -1,4 +1,4 @@
-# Fraudetect AI — Explainable Fraud Investigation & Risk Intelligence
+# Fraudetect AI — Explainable Payment Fraud Risk and Investigation Workspace
 
 ### Turn a payment-risk score into an evidence-backed, auditable analyst investigation.
 
