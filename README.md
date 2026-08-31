@@ -129,45 +129,132 @@ without introducing microservices or a distributed database.
 
 ```mermaid
 flowchart TB
-    Analyst[Risk analyst] --> UI[React + TypeScript workspace]
-    UI -->|Same-origin /api/v1| API[FastAPI API]
+    subgraph Experience["Analyst experience"]
+        direction TB
+        Analyst[Risk analyst] --> UI[React + TypeScript workspace]
+        UI -->|Same-origin /api/v1| API[FastAPI API]
+        API --> Investigation[Investigation service]
+    end
 
-    API --> Investigation[Investigation service]
-    Investigation --> Risk[ML risk engine]
-    Investigation --> Evidence[Deterministic evidence]
-    Investigation --> Behavior[Behavioral intelligence]
-    Investigation --> Relationship[Relationship intelligence]
+    subgraph Intelligence["Deterministic intelligence"]
+        direction LR
+        Risk[ML risk engine]
+        Evidence[Deterministic evidence]
+        Behavior[Behavioral intelligence]
+        Relationship[Relationship intelligence]
+    end
 
-    Model[(Frozen model bundle)] --> Risk
-    Profile[(Training-only reference profile)] --> Evidence
-    BehaviorDB[(Read-only behavioral SQLite)] --> Behavior
-    RelationshipDB[(Read-only relationship SQLite)] --> Relationship
+    Investigation --> Risk
+    Investigation --> Evidence
+    Investigation --> Behavior
+    Investigation --> Relationship
 
-    Investigation --> Sanitizer[Positive-selection sanitizer]
-    Sanitizer --> Cases[Immutable case snapshot]
-    Cases --> Workflow[Human-controlled lifecycle]
-    Workflow --> Audit[(Append-only audit events)]
+    subgraph Runtime["Verified runtime artifacts"]
+        direction LR
+        Model[(Frozen model bundle)]
+        Profile[(Training-only reference profile)]
+        BehaviorDB[(Read-only behavioral SQLite)]
+        RelationshipDB[(Read-only relationship SQLite)]
+    end
 
-    Cases --> Copilot[Investigation Copilot]
-    Copilot --> Fallback[Deterministic fallback]
-    Copilot -. explicit enablement .-> Providers[Gemini or OpenAI]
+    Model --> Risk
+    Profile --> Evidence
+    BehaviorDB --> Behavior
+    RelationshipDB --> Relationship
+
+    subgraph Casework["Case, analyst control, and advisory AI"]
+        direction TB
+        Sanitizer[Positive-selection sanitizer] --> Cases[Immutable case snapshot]
+        Cases --> Workflow[Human-controlled lifecycle]
+        Workflow --> Audit[(Append-only audit events)]
+        Cases --> Copilot[Investigation Copilot]
+        Copilot --> Fallback[Deterministic fallback]
+        Copilot -. explicit enablement .-> Providers[Gemini or OpenAI]
+    end
+
+    Investigation --> Sanitizer
+
+    classDef human fill:#4A3B1D,stroke:#FACC15,color:#F8FAFC,stroke-width:2px;
+    classDef frontend fill:#163A5F,stroke:#60A5FA,color:#F8FAFC,stroke-width:2px;
+    classDef api fill:#35245F,stroke:#A78BFA,color:#F8FAFC,stroke-width:2px;
+    classDef ml fill:#5C2B29,stroke:#FB923C,color:#F8FAFC,stroke-width:2px;
+    classDef evidence fill:#5A4318,stroke:#FBBF24,color:#F8FAFC,stroke-width:2px;
+    classDef behavior fill:#1F4D3A,stroke:#4ADE80,color:#F8FAFC,stroke-width:2px;
+    classDef relationship fill:#164E63,stroke:#22D3EE,color:#F8FAFC,stroke-width:2px;
+    classDef neutral fill:#27364A,stroke:#94A3B8,color:#F8FAFC,stroke-width:2px;
+    classDef copilot fill:#3B2864,stroke:#C084FC,color:#F8FAFC,stroke-width:2px;
+
+    class Analyst,Workflow,Audit human;
+    class UI frontend;
+    class API,Investigation api;
+    class Risk,Model ml;
+    class Evidence,Profile evidence;
+    class Behavior,BehaviorDB behavior;
+    class Relationship,RelationshipDB relationship;
+    class Sanitizer,Cases,Fallback neutral;
+    class Copilot,Providers copilot;
+
+    style Experience fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Intelligence fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Runtime fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Casework fill:transparent,stroke:#64748B,stroke-width:1px;
+    linkStyle default stroke:#64748B,stroke-width:1.5px;
 ```
 
 ### End-to-end investigation flow
 
 ```mermaid
-flowchart LR
-    Input[Prepared reference or manual scoring fields]
-    Input --> Features[Safe feature extraction]
-    Features --> Score[Calibrated probability and ML risk]
-    Score --> Facts[Deterministic evidence]
-    Facts --> History[Past-only behavioral and relationship context]
-    History --> Snapshot[Identifier-free immutable snapshot]
-    Snapshot --> Summary[Deterministic Investigation Summary]
-    Snapshot --> Brief[Grounded Copilot or deterministic fallback]
-    Summary --> Decision[Human analyst decision]
-    Brief --> Decision
-    Decision --> Timeline[Append-only decision timeline]
+flowchart TB
+    subgraph Detect["1 · Detect"]
+        direction LR
+        Input[Prepared reference or manual scoring fields]
+        Input --> Features[Safe feature extraction]
+        Features --> Score[Calibrated probability and ML risk]
+    end
+
+    subgraph Explain["2 · Explain and preserve"]
+        direction LR
+        Facts[Deterministic evidence]
+        Facts --> History[Past-only behavioral and relationship context]
+        History --> Snapshot[Identifier-free immutable snapshot]
+    end
+
+    subgraph Decide["3 · Investigate and decide"]
+        direction LR
+        Summary[Deterministic Investigation Summary]
+        Brief[Grounded Copilot or deterministic fallback]
+        Decision[Human analyst decision]
+        Timeline[Append-only decision timeline]
+
+        Summary --> Decision
+        Brief --> Decision
+        Decision --> Timeline
+    end
+
+    Score --> Facts
+    Snapshot --> Summary
+    Snapshot --> Brief
+
+    classDef input fill:#27364A,stroke:#94A3B8,color:#F8FAFC,stroke-width:2px;
+    classDef frontend fill:#163A5F,stroke:#60A5FA,color:#F8FAFC,stroke-width:2px;
+    classDef ml fill:#5C2B29,stroke:#FB923C,color:#F8FAFC,stroke-width:2px;
+    classDef evidence fill:#5A4318,stroke:#FBBF24,color:#F8FAFC,stroke-width:2px;
+    classDef context fill:#164E63,stroke:#22D3EE,color:#F8FAFC,stroke-width:2px;
+    classDef casework fill:#4A3B1D,stroke:#FACC15,color:#F8FAFC,stroke-width:2px;
+    classDef copilot fill:#3B2864,stroke:#C084FC,color:#F8FAFC,stroke-width:2px;
+
+    class Input input;
+    class Features frontend;
+    class Score ml;
+    class Facts evidence;
+    class History context;
+    class Snapshot,Summary,Decision,Timeline casework;
+    class Brief copilot;
+
+    style Detect fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Explain fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Decide fill:transparent,stroke:#64748B,stroke-width:1px;
+    linkStyle default stroke:#64748B,stroke-width:1.5px;
 ```
 
 ## Dataset & Model
@@ -288,12 +375,25 @@ ML model.
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> OPEN
     OPEN --> IN_REVIEW
     IN_REVIEW --> ESCALATED
     IN_REVIEW --> CLEARED
     ESCALATED --> CLOSED
     CLEARED --> CLOSED
+
+    classDef openState fill:#27364A,stroke:#94A3B8,color:#F8FAFC,stroke-width:2px;
+    classDef reviewState fill:#35245F,stroke:#A78BFA,color:#F8FAFC,stroke-width:2px;
+    classDef escalatedState fill:#5C2B29,stroke:#FB923C,color:#F8FAFC,stroke-width:2px;
+    classDef clearedState fill:#1F4D3A,stroke:#4ADE80,color:#F8FAFC,stroke-width:2px;
+    classDef closedState fill:#4A3B1D,stroke:#FACC15,color:#F8FAFC,stroke-width:2px;
+
+    class OPEN openState;
+    class IN_REVIEW reviewState;
+    class ESCALATED escalatedState;
+    class CLEARED clearedState;
+    class CLOSED closedState;
 ```
 
 Closed cases reject notes, Copilot regeneration, and lifecycle mutations. Analyst updates cannot
@@ -312,17 +412,52 @@ cannot change case state or model output. The public Render showcase uses fallba
 ## Public deployment architecture
 
 ```mermaid
-flowchart LR
-    Repo[GitHub repository] --> Build[Render build]
-    Runtime[GitHub Release runtime ZIP] -->|HTTPS + SHA-256| Build
-    Build --> Service[Single FastAPI and Uvicorn service]
+flowchart TB
+    subgraph Supply["Source and verified runtime"]
+        direction LR
+        Repo[GitHub repository]
+        Runtime[GitHub Release runtime ZIP]
+    end
 
-    Service --> Frontend[Compiled React frontend at /]
-    Service --> API[FastAPI at /api/v1]
+    Repo --> Build[Render build]
+    Runtime -->|HTTPS + SHA-256| Build
 
-    API --> ModelRuntime[(Frozen model and reference profile)]
-    API --> ShowcaseHistory[(Read-only showcase history indexes)]
-    API --> CaseStore[(Ephemeral /tmp cases.sqlite)]
+    subgraph Application["Single same-origin Render service"]
+        direction TB
+        Build --> Service[Single FastAPI and Uvicorn service]
+        Service --> Frontend[Compiled React frontend at /]
+        Service --> API[FastAPI at /api/v1]
+    end
+
+    subgraph Data["Showcase runtime data"]
+        direction LR
+        ModelRuntime[(Frozen model and reference profile)]
+        ShowcaseHistory[(Read-only showcase history indexes)]
+        CaseStore[(Ephemeral /tmp cases.sqlite)]
+    end
+
+    API --> ModelRuntime
+    API --> ShowcaseHistory
+    API --> CaseStore
+
+    classDef infrastructure fill:#27364A,stroke:#94A3B8,color:#F8FAFC,stroke-width:2px;
+    classDef frontend fill:#163A5F,stroke:#60A5FA,color:#F8FAFC,stroke-width:2px;
+    classDef api fill:#35245F,stroke:#A78BFA,color:#F8FAFC,stroke-width:2px;
+    classDef ml fill:#5C2B29,stroke:#FB923C,color:#F8FAFC,stroke-width:2px;
+    classDef history fill:#164E63,stroke:#22D3EE,color:#F8FAFC,stroke-width:2px;
+    classDef casework fill:#4A3B1D,stroke:#FACC15,color:#F8FAFC,stroke-width:2px;
+
+    class Repo,Runtime,Build infrastructure;
+    class Frontend frontend;
+    class Service,API api;
+    class ModelRuntime ml;
+    class ShowcaseHistory history;
+    class CaseStore casework;
+
+    style Supply fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Application fill:transparent,stroke:#64748B,stroke-width:1px;
+    style Data fill:transparent,stroke:#64748B,stroke-width:1px;
+    linkStyle default stroke:#64748B,stroke-width:1.5px;
 ```
 
 The deployment binds to `0.0.0.0:$PORT`, uses one backend instance, and serves frontend and API from
