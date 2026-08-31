@@ -2,7 +2,7 @@ services:
   - type: web
     name: fraudetect-ai-showcase
     runtime: python
-    plan: 0.5c-512mb
+    plan: free
     region: singapore
     buildCommand: >-
       python -m pip install -r requirements-deploy.txt &&
@@ -13,10 +13,6 @@ services:
       python scripts/showcase_runtime.py prepare-case-store &&
       uvicorn backend.app.deployment:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
-    disk:
-      name: fraudetect-showcase-data
-      mountPath: /var/data/fraudetect
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
@@ -33,7 +29,7 @@ services:
       - key: FRAUDETECT_RELATIONSHIP_HISTORY_DB
         value: artifacts/runtime/demo/relationship.sqlite
       - key: FRAUDETECT_CASE_DATABASE
-        value: /var/data/fraudetect/cases.sqlite
+        value: /tmp/fraudetect/cases.sqlite
       - key: FRAUDETECT_SHOWCASE_CASE_SEED
         value: artifacts/runtime/demo/cases.sqlite
       - key: FRAUDETECT_LLM_ENABLED

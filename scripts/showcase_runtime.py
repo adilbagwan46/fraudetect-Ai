@@ -232,7 +232,7 @@ def prepare_case_store(seed: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         _validate_sqlite(destination, "cases")
-        print("Using the existing persistent showcase case store.")
+        print("Using the existing showcase case store.")
         return
     temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
     try:
@@ -241,7 +241,7 @@ def prepare_case_store(seed: Path, destination: Path) -> None:
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)
-    print("Initialized the persistent showcase case store.")
+    print("Initialized the showcase case store.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -270,7 +270,7 @@ def parse_args() -> argparse.Namespace:
     prepare.add_argument(
         "--destination",
         type=Path,
-        default=Path(os.getenv("FRAUDETECT_CASE_DATABASE", "/var/data/fraudetect/cases.sqlite")),
+        default=Path(os.getenv("FRAUDETECT_CASE_DATABASE", "/tmp/fraudetect/cases.sqlite")),
     )
     return parser.parse_args()
 

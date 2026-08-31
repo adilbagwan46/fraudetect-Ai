@@ -1,12 +1,27 @@
 # Showcase deployment
 
-The first public deployment is intentionally limited to the three-case showcase. It uses one
-Render Python web service, one process, and one persistent disk. FastAPI serves the compiled React
-application and `/api/v1` from the same origin, so production does not require a second frontend
-service or cross-origin API access.
+The first public deployment is intentionally limited to the three-case showcase. It uses one Free
+Render Python web service and one process. FastAPI serves the compiled React application and
+`/api/v1` from the same origin, so production does not require a second frontend service or
+cross-origin API access.
 
 This deployment does not include raw or prepared PaySim CSVs or the 1.66 GB full behavioral and
-relationship indexes. It does not retrain or recalibrate the frozen model.
+relationship indexes. It does not retrain or recalibrate the frozen model. Its writable case store
+uses Render's ephemeral filesystem: analyst changes can survive only for the life of the current
+service instance and can reset after a restart, spin-down, or redeploy.
+
+## Public Free showcase versus local normal mode
+
+| | Public Free showcase | Local normal mode |
+|---|---|---|
+| Cases | Three curated genuine PaySim cases | Normal local case database |
+| Case storage | Ephemeral `/tmp/fraudetect/cases.sqlite` | Ignored local `artifacts/cases/cases.sqlite` |
+| History | Small showcase-only behavioral and relationship subsets | Full prepared PaySim behavioral and relationship indexes |
+| Case creation | Curated showcase workflow | Arbitrary valid prepared PaySim transaction references |
+| Persistence | Resets when Render replaces the instance filesystem | Persists in the local ignored database |
+
+The public deployment is a bounded portfolio demonstration. `make normal` remains the full local
+PaySim workflow and is not changed by this deployment configuration.
 
 ## Private runtime bundle
 
@@ -44,16 +59,16 @@ If the object host requires bearer authentication, add
 must not be added to `render.yaml` or `.env.example`. Use a direct object URL: authenticated
 downloads intentionally reject redirects so a bearer token cannot be forwarded to another host.
 
-The Blueprint configures Python 3.12.13 to match the frozen model environment, Node 24 for the
-frontend build, deterministic Copilot fallback, the three ignored runtime artifact locations, a
-Singapore service, and a 1 GB persistent disk mounted at `/var/data/fraudetect`. A paid Render web
-service is required because Render persistent disks are not available on free web services.
+The Blueprint configures the Free Render plan, Python 3.12.13 to match the frozen model environment,
+Node 24 for the frontend build, deterministic Copilot fallback, and the three ignored runtime
+artifact locations. It does not request a persistent disk.
 
-The disk-backed `/var/data/fraudetect/cases.sqlite` is created from the curated seed only when it
-does not already exist. A restart or deploy validates and reuses an existing case store; it never
-silently overwrites analyst workflow state. The model and the two history subsets remain in the
-read-only deployment build. A disk-backed service is restricted to one instance, which matches the
-current SQLite architecture.
+At process startup, `/tmp/fraudetect/cases.sqlite` is created atomically from the validated
+three-case seed only when the destination is absent. If the file already exists in the running
+instance, startup validates and reuses it instead of overwriting analyst workflow state. When Free
+Render replaces the ephemeral filesystem, the next startup creates a fresh three-case store from
+the unchanged seed. The seed, frozen model, and two showcase history subsets stay in the deployment
+build; the behavioral and relationship providers open their SQLite indexes read-only.
 
 Gemini and OpenAI remain disabled by default. No provider key is required. To opt in later, set the
 existing server-side provider variables in Render; never expose provider keys through a Vite
@@ -84,9 +99,9 @@ or backend URL embedded in JavaScript.
 ## Rebuild and recovery
 
 For a new artifact version, regenerate the private ZIP, upload it, update the URL and SHA-256 in
-Render, and redeploy. Existing disk-backed case state is preserved. To restore the original curated
-queue, take a disk backup first and replace the case store through an explicit maintenance action;
-normal deploys intentionally do not reset it.
+Render, and redeploy. A Free Render restart, spin-down, or redeploy can discard the ephemeral case
+store; startup then restores the original three curated cases from the verified seed. This reset is
+intentional for the public showcase and does not affect the normal local case database.
 
 The public showcase has no authentication or multi-tenant isolation. Keep one instance, do not use
 it for real payment data, and treat it as a portfolio demonstration rather than a production fraud

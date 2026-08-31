@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import zipfile
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from scripts.showcase_runtime import (
     ShowcaseRuntimeError,
     install_runtime,
     package_runtime,
+    parse_args,
     prepare_case_store,
     sha256_file,
     validate_runtime,
@@ -110,8 +112,9 @@ def test_runtime_archive_rejects_unsafe_member_paths(
 
 def test_prepare_case_store_initializes_once_without_overwrite(tmp_path: Path) -> None:
     seed = tmp_path / "seed.sqlite"
-    destination = tmp_path / "disk" / "cases.sqlite"
+    destination = tmp_path / "ephemeral" / "cases.sqlite"
     _database(seed, "cases", rows=3)
+    seed_digest = sha256_file(seed)
 
     prepare_case_store(seed, destination)
     initial_digest = sha256_file(destination)
@@ -123,3 +126,50 @@ def test_prepare_case_store_initializes_once_without_overwrite(tmp_path: Path) -
 
     assert changed_digest != initial_digest
     assert sha256_file(destination) == changed_digest
+    assert sha256_file(seed) == seed_digest
+
+
+def test_prepare_case_store_reinitializes_after_ephemeral_store_is_lost(tmp_path: Path) -> None:
+    seed = tmp_path / "seed.sqlite"
+    destination = tmp_path / "ephemeral" / "cases.sqlite"
+    _database(seed, "cases", rows=3)
+    seed_digest = sha256_file(seed)
+
+    prepare_case_store(seed, destination)
+    with sqlite3.connect(destination) as connection:
+        connection.execute("INSERT INTO cases (value) VALUES ('temporary-change')")
+    destination.unlink()
+
+    prepare_case_store(seed, destination)
+
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM cases").fetchone()[0] == 3
+    assert sha256_file(seed) == seed_digest
+
+
+def test_prepare_case_store_defaults_to_free_render_ephemeral_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("FRAUDETECT_CASE_DATABASE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["showcase_runtime.py", "prepare-case-store"])
+
+    assert parse_args().destination == Path("/tmp/fraudetect/cases.sqlite")
+
+
+def test_render_blueprint_uses_free_ephemeral_showcase_storage() -> None:
+    blueprint = Path("render.yaml").read_text(encoding="utf-8")
+
+    assert "    plan: free\n" in blueprint
+    assert "\n    disk:\n" not in blueprint
+    assert "/var/data" not in blueprint
+    assert (
+        "      - key: FRAUDETECT_CASE_DATABASE\n"
+        "        value: /tmp/fraudetect/cases.sqlite\n"
+    ) in blueprint
+    assert (
+        "uvicorn backend.app.deployment:app --host 0.0.0.0 --port $PORT" in blueprint
+    )
+    assert "--reload" not in blueprint
+    assert "artifacts/runtime/demo/behavior.sqlite" in blueprint
+    assert "artifacts/runtime/demo/relationship.sqlite" in blueprint
+    assert "artifacts/runtime/demo/cases.sqlite" in blueprint

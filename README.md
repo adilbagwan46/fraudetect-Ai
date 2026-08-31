@@ -411,7 +411,7 @@ After the final public deployment, the most useful screenshots to add are:
 | Error handling | Validation and provider failures return sanitized messages and bounded categories. |
 | Runtime artifacts | Private archive download requires HTTPS and configured SHA-256 verification. |
 | Archive installation | Redirects, unsafe paths, duplicates, directories, encryption, unsupported compression, unexpected files, and oversized archives are rejected. |
-| Persistent cases | The showcase seed initializes storage only when the persistent case database is absent. |
+| Showcase cases | The seed initializes an isolated case store only when it is absent; Free Render may reset this ephemeral store when an instance is replaced. |
 | Audit events | Server-generated events participate in the recorded operation; SQLite triggers reject UPDATE and DELETE. |
 
 These are portfolio safeguards, not a substitute for production authentication, authorization,
@@ -429,14 +429,17 @@ The prepared Render architecture uses:
 - `0.0.0.0:$PORT` production binding without reload mode
 - Compiled React frontend served by FastAPI on the same public origin
 - `/api/v1/health` and safe component readiness endpoints
-- One persistent disk for the writable showcase case store
+- Ephemeral `/tmp` storage for the writable showcase case store on Render Free
 - A checksum-verified private runtime bundle containing the frozen model and small showcase indexes
 - No raw PaySim CSV or full history indexes
 - Deterministic Copilot fallback enabled by default; no Gemini key required
 
 The runtime installer verifies HTTPS transport, archive SHA-256, size limits, member metadata, an
-exact file allowlist, expected SQLite schemas, and the three-case seed before startup. Existing
-persistent case storage is not silently overwritten.
+exact file allowlist, expected SQLite schemas, and the three-case seed before startup. Startup does
+not overwrite an existing case store in the active instance. Render can reset that store after a
+restart, spin-down, or redeploy, at which point it is initialized again from the curated seed. The
+local normal mode continues to use the full prepared PaySim indexes and its separate ignored case
+database.
 
 See [`docs/deployment.md`](docs/deployment.md) for the Render Blueprint, private artifact workflow,
 required configuration, and remaining deployment steps.
@@ -485,7 +488,7 @@ Latest verified repository state:
 
 | Check | Result |
 |---|---|
-| Full Python suite | **133 passed** |
+| Full Python suite | **136 passed** |
 | Deployment tests | **Passed** |
 | Ruff | **Passed** |
 | `git diff --check` | **Passed** |
